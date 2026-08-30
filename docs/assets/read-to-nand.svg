@@ -76,7 +76,7 @@
 
   <rect class="box" x="745" y="575" width="220" height="82"/>
   <text class="label" x="855" y="606" text-anchor="middle">NAND media</text>
-  <text class="small" x="855" y="631" text-anchor="middle" style="font-size:14px">page read/program · block erase</text>
+  <text class="small" x="855" y="631" text-anchor="middle" style="font-size:12px">page read/program · block erase</text>
 
   <path class="flow" d="M840 400 V530 H600 V595"/>
   <path class="flow" d="M600 616 H745"/>
