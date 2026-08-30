@@ -59,7 +59,10 @@ cleanup() {
     wait "$server_pid" 2>/dev/null || true
   fi
   case "$run_root" in
-    "$tmp_parent"/io-journey-nbd.*) rm -rf -- "$run_root" ;;
+    "$tmp_parent"/io-journey-nbd.*)
+      rm -f -- "$run_root/listener.ready" "$run_root/nbd.sock"
+      rm -rf -- "$run_root"
+      ;;
     *) echo "refusing unexpected cleanup target: $run_root" >&2 ;;
   esac
 }
@@ -71,14 +74,14 @@ trap 'exit 129' HUP
 "$lab_binary" serve "$run_root" 2 &
 server_pid=$!
 for _ in $(seq 1 200); do
-  [[ -S "$run_root/nbd.sock" ]] && break
+  [[ -f "$run_root/listener.ready" && -S "$run_root/nbd.sock" ]] && break
   if ! kill -0 "$server_pid" 2>/dev/null; then
     echo "NBD server exited before its socket was ready" >&2
     exit 1
   fi
   sleep 0.01
 done
-if [[ ! -S "$run_root/nbd.sock" ]]; then
+if [[ ! -f "$run_root/listener.ready" || ! -S "$run_root/nbd.sock" ]]; then
   echo "NBD socket did not become ready" >&2
   exit 1
 fi

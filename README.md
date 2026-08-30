@@ -12,7 +12,7 @@ TRIM does **not** generally promise zero-filled reads. The lab records a softwar
 
 ## Safety boundary
 
-The lab is deliberately unprivileged. It uses one new mode-0700 temporary directory, a private Unix socket, and a newly created 1 MiB regular file. It never uses `/dev/nbd*`, `sudo`, `modprobe`, `mkfs`, a mount, a partition table, or a real disk path. Existing socket, image, log, and output paths are rejected.
+The lab is deliberately unprivileged. It uses one new mode-0700 temporary directory, a private Unix socket, an owner-only listener-readiness marker, and a newly created 1 MiB regular file. It never uses `/dev/nbd*`, `sudo`, `modprobe`, `mkfs`, a mount, a partition table, or a real disk path. Existing readiness, socket, image, log, and output paths are rejected.
 
 ## Local protocol check
 
@@ -56,7 +56,10 @@ The current macOS development host has no suitable `fio`/libnbd surface. The loc
 ## Pilot map
 
 - [From `read(2)` to NAND](docs/01-from-read-2-to-nand.md): the conditional request path and the boundaries the lab can observe.
-- `src/main.rs`: the small fixed-newstyle NBD server plus local protocol probe.
+- `src/main.rs`: the small CLI dispatcher.
+- `src/server.rs`: root, listener, connection, cleanup, and verification lifecycle.
+- `src/protocol.rs`: fixed-newstyle negotiation, framing, and the local protocol probe.
+- `src/export.rs`: bounded storage operations and deterministic event recording.
 - `fio/*.fio`: four finite, 4 KiB-aligned experiments.
 - `run-fio.sh`: the validated private-runtime runner.
 

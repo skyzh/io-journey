@@ -1,21 +1,103 @@
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Read};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{FileTypeExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
-use std::path::Path;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
 use crate::export::{EventLog, transmission};
 use crate::protocol::*;
 
+const READY_FILE: &str = "listener.ready";
+
 fn path_entry_exists(path: &Path) -> io::Result<bool> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error),
+    }
+}
+
+fn listener_is_ready(root: &Path) -> io::Result<bool> {
+    let ready = root.join(READY_FILE);
+    let socket = root.join("nbd.sock");
+    let ready_metadata = match fs::symlink_metadata(&ready) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    let socket_metadata = match fs::symlink_metadata(&socket) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    Ok(ready_metadata.file_type().is_file() && socket_metadata.file_type().is_socket())
+}
+
+fn remove_listener_artifacts(root: &Path) -> io::Result<()> {
+    let mut first_error = None;
+    for artifact in [root.join(READY_FILE), root.join("nbd.sock")] {
+        match fs::remove_file(&artifact) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) if first_error.is_none() => first_error = Some(error),
+            Err(_) => {}
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+fn stop_child_and_remove_listener(child: &mut Child, root: &Path) {
+    if child.try_wait().ok().flatten().is_none() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    let _ = remove_listener_artifacts(root);
+}
+
+struct ListenerRuntime {
+    listener: UnixListener,
+    socket: PathBuf,
+    ready: PathBuf,
+    armed: bool,
+}
+
+impl ListenerRuntime {
+    fn bind(root: &Path) -> io::Result<Self> {
+        let socket = root.join("nbd.sock");
+        let ready = root.join(READY_FILE);
+        let listener = UnixListener::bind(&socket)?;
+        let runtime = Self {
+            listener,
+            socket,
+            ready,
+            armed: true,
+        };
+        fs::set_permissions(&runtime.socket, fs::Permissions::from_mode(0o600))?;
+        let ready_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&runtime.ready)?;
+        ready_file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        ready_file.sync_all()?;
+        Ok(runtime)
+    }
+
+    fn close(mut self) -> io::Result<()> {
+        self.armed = false;
+        remove_listener_artifacts(self.socket.parent().unwrap())
+    }
+}
+
+impl Drop for ListenerRuntime {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = remove_listener_artifacts(self.socket.parent().unwrap());
+        }
     }
 }
 
@@ -43,7 +125,7 @@ pub(crate) fn verify(root: &Path) -> io::Result<()> {
 
     let mut ready = false;
     for _ in 0..200 {
-        if socket.exists() {
+        if listener_is_ready(root)? {
             ready = true;
             break;
         }
@@ -53,8 +135,7 @@ pub(crate) fn verify(root: &Path) -> io::Result<()> {
         thread::sleep(Duration::from_millis(5));
     }
     if !ready {
-        let _ = child.kill();
-        let _ = child.wait();
+        stop_child_and_remove_listener(&mut child, root);
         return Err(io::Error::new(
             ErrorKind::TimedOut,
             "server socket was not ready",
@@ -63,14 +144,21 @@ pub(crate) fn verify(root: &Path) -> io::Result<()> {
 
     let probe_result = probe(&socket);
     if probe_result.is_err() {
-        let _ = child.kill();
+        stop_child_and_remove_listener(&mut child, root);
+        return probe_result;
     }
-    let status = child.wait()?;
-    probe_result?;
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(error) => {
+            stop_child_and_remove_listener(&mut child, root);
+            return Err(error);
+        }
+    };
     if !status.success() {
+        let _ = remove_listener_artifacts(root);
         return Err(io::Error::other(format!("server exited with {status}")));
     }
-    if socket.exists() {
+    if socket.exists() || root.join(READY_FILE).exists() {
         return Err(io::Error::other("server left its socket behind"));
     }
     let metadata = fs::metadata(&image)?;
@@ -132,7 +220,8 @@ pub(crate) fn serve(root: &Path, connections: usize) -> io::Result<()> {
     let socket = root.join("nbd.sock");
     let image_path = root.join("backing.img");
     let events_path = root.join("events.jsonl");
-    for path in [&socket, &image_path, &events_path] {
+    let ready_path = root.join(READY_FILE);
+    for path in [&socket, &ready_path, &image_path, &events_path] {
         if path_entry_exists(path)? {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
@@ -149,21 +238,19 @@ pub(crate) fn serve(root: &Path, connections: usize) -> io::Result<()> {
     image.set_permissions(fs::Permissions::from_mode(0o600))?;
     image.set_len(DEFAULT_EXPORT_BYTES)?;
     image.sync_all()?;
-    let listener = UnixListener::bind(&socket)?;
-    fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
     let mut events = EventLog::new(&events_path)?;
+    let runtime = ListenerRuntime::bind(root)?;
     let result = (|| {
         for _ in 0..connections {
-            let (mut stream, _) = listener.accept()?;
+            let (mut stream, _) = runtime.listener.accept()?;
             if negotiate(&mut stream, DEFAULT_EXPORT_BYTES)? {
                 transmission(&mut stream, &mut image, DEFAULT_EXPORT_BYTES, &mut events)?;
             }
         }
         image.sync_all()
     })();
-    drop(listener);
-    let remove_result = fs::remove_file(&socket);
-    result.and(remove_result)
+    let cleanup_result = runtime.close();
+    result.and(cleanup_result)
 }
 
 #[cfg(test)]
@@ -192,14 +279,26 @@ mod tests {
         root
     }
 
-    fn wait_for_socket(root: &Path) {
+    fn wait_for_listener(
+        root: &Path,
+        server: &thread::JoinHandle<io::Result<()>>,
+    ) -> io::Result<()> {
         for _ in 0..200 {
-            if root.join("nbd.sock").exists() {
-                return;
+            if listener_is_ready(root).unwrap() {
+                return Ok(());
+            }
+            if server.is_finished() {
+                return Err(io::Error::new(
+                    ErrorKind::BrokenPipe,
+                    "server exited before listener readiness",
+                ));
             }
             thread::sleep(Duration::from_millis(5));
         }
-        panic!("server socket was not ready");
+        Err(io::Error::new(
+            ErrorKind::TimedOut,
+            "server listener was not ready",
+        ))
     }
 
     fn mode(path: &Path) -> u32 {
@@ -249,13 +348,15 @@ mod tests {
         let root = fresh_root("owner-only");
         let server_root = root.clone();
         let server = thread::spawn(move || serve(&server_root, 1));
-        wait_for_socket(&root);
+        wait_for_listener(&root, &server).unwrap();
         wait_for_mode(&root.join("nbd.sock"), 0o600);
+        wait_for_mode(&root.join(READY_FILE), 0o600);
         wait_for_mode(&root.join("backing.img"), 0o600);
         wait_for_mode(&root.join("events.jsonl"), 0o600);
 
         assert_eq!(mode(&root), 0o700);
         assert_eq!(mode(&root.join("nbd.sock")), 0o600);
+        assert_eq!(mode(&root.join(READY_FILE)), 0o600);
         assert_eq!(mode(&root.join("backing.img")), 0o600);
         assert_eq!(mode(&root.join("events.jsonl")), 0o600);
 
@@ -263,11 +364,69 @@ mod tests {
         server.join().unwrap().unwrap();
 
         assert!(!root.join("nbd.sock").exists());
+        assert!(!root.join(READY_FILE).exists());
         assert_eq!(mode(&root.join("backing.img")), 0o600);
         assert_eq!(mode(&root.join("events.jsonl")), 0o600);
 
         fs::remove_file(root.join("backing.img")).unwrap();
         fs::remove_file(root.join("events.jsonl")).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn listener_readiness_is_connectable_and_cleans_after_protocol_error() {
+        let root = fresh_root("readiness-error");
+        let server_root = root.clone();
+        let server = thread::spawn(move || serve(&server_root, 1));
+        wait_for_listener(&root, &server).unwrap();
+
+        let mut stream = std::os::unix::net::UnixStream::connect(root.join("nbd.sock")).unwrap();
+        let mut handshake = [0_u8; 18];
+        stream.read_exact(&mut handshake).unwrap();
+        stream.write_all(&u32::MAX.to_be_bytes()).unwrap();
+        stream.flush().unwrap();
+        drop(stream);
+
+        let error = server.join().unwrap().unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert!(!root.join("nbd.sock").exists());
+        assert!(!root.join(READY_FILE).exists());
+
+        fs::remove_file(root.join("backing.img")).unwrap();
+        fs::remove_file(root.join("events.jsonl")).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn readiness_waiter_fails_when_the_server_exits_first() {
+        let root = fresh_root("readiness-exit");
+        let server = thread::spawn(|| {
+            Err::<(), io::Error>(io::Error::other("injected pre-readiness failure"))
+        });
+
+        let error = wait_for_listener(&root, &server).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::BrokenPipe);
+        assert!(!root.join("nbd.sock").exists());
+        assert!(!root.join(READY_FILE).exists());
+        assert!(server.join().unwrap().is_err());
+
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn verifier_cleanup_removes_only_listener_artifacts() {
+        let root = fresh_root("verifier-cleanup");
+        let listener = UnixListener::bind(root.join("nbd.sock")).unwrap();
+        fs::write(root.join(READY_FILE), b"").unwrap();
+        fs::write(root.join("backing.img"), b"preserve").unwrap();
+
+        remove_listener_artifacts(&root).unwrap();
+        assert!(!root.join("nbd.sock").exists());
+        assert!(!root.join(READY_FILE).exists());
+        assert_eq!(fs::read(root.join("backing.img")).unwrap(), b"preserve");
+
+        drop(listener);
+        fs::remove_file(root.join("backing.img")).unwrap();
         fs::remove_dir(root).unwrap();
     }
 
@@ -286,11 +445,27 @@ mod tests {
     }
 
     #[test]
+    fn serve_never_follows_or_overwrites_a_preexisting_readiness_path() {
+        let root = fresh_root("existing-readiness");
+        fs::write(root.join(READY_FILE), b"sentinel").unwrap();
+
+        let error = serve(&root, 1).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(root.join(READY_FILE)).unwrap(), b"sentinel");
+        assert!(!root.join("nbd.sock").exists());
+        assert!(!root.join("backing.img").exists());
+        assert!(!root.join("events.jsonl").exists());
+
+        fs::remove_file(root.join(READY_FILE)).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
     fn out_of_range_request_is_rejected_without_growing_the_export() {
         let root = fresh_root("bounds");
         let server_root = root.clone();
         let server = thread::spawn(move || serve(&server_root, 1));
-        wait_for_socket(&root);
+        wait_for_listener(&root, &server).unwrap();
 
         let mut stream = connect_probe(&root.join("nbd.sock")).unwrap();
         let cookie = 99_u64;
@@ -337,7 +512,7 @@ mod tests {
         let root = fresh_root("oversized-write");
         let server_root = root.clone();
         let server = thread::spawn(move || serve(&server_root, 1));
-        wait_for_socket(&root);
+        wait_for_listener(&root, &server).unwrap();
 
         let mut stream = connect_probe(&root.join("nbd.sock")).unwrap();
         let cookie = 101_u64;
