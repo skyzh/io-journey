@@ -1,0 +1,13 @@
+[global]
+ioengine=nbd
+uri=${NBD_URI}
+iodepth=1
+numjobs=1
+thread=1
+bs=4k
+size=16k
+time_based=0
+group_reporting=1
+
+[trim]
+rw=trim

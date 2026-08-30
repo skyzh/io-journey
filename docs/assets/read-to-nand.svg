@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Observed NBD mock and conditional physical read path</title>
+  <desc id="desc">The userspace NBD mock ends at its request log. Separately, a real filesystem or raw-device request can travel through blk-mq, an NVMe queue, an opaque controller and FTL, and NAND.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .lane { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
+      .box { fill: #ffffff; stroke: #334155; stroke-width: 2; rx: 12; }
+      .opaque { fill: #fff7ed; stroke: #c2410c; stroke-width: 3; stroke-dasharray: 9 7; rx: 12; }
+      .observe { fill: #ecfeff; stroke: #0e7490; stroke-width: 2; rx: 12; }
+      .label { font: 600 19px system-ui, sans-serif; fill: #0f172a; }
+      .small { font: 15px system-ui, sans-serif; fill: #334155; }
+      .lane-label { font: 700 18px system-ui, sans-serif; fill: #475569; }
+      .flow { fill: none; stroke: #334155; stroke-width: 3; marker-end: url(#arrow); }
+      .return { fill: none; stroke: #0e7490; stroke-width: 3; marker-end: url(#arrow); }
+      .boundary { fill: none; stroke: #0e7490; stroke-width: 3; stroke-dasharray: 7 5; }
+    </style>
+  </defs>
+
+  <rect class="lane" x="20" y="25" width="1160" height="150" rx="16"/>
+  <rect class="lane" x="20" y="195" width="1160" height="300" rx="16"/>
+  <rect class="lane" x="20" y="515" width="1160" height="180" rx="16"/>
+  <text class="lane-label" x="42" y="57">Process</text>
+  <text class="lane-label" x="42" y="227">Linux paths and userspace observation boundary</text>
+  <text class="lane-label" x="42" y="547">Device</text>
+
+  <rect class="box" x="115" y="70" width="180" height="70"/>
+  <text class="label" x="205" y="101" text-anchor="middle">pread()</text>
+  <text class="small" x="205" y="124" text-anchor="middle">4 KiB at offset</text>
+
+  <rect class="box" x="380" y="70" width="190" height="70"/>
+  <text class="label" x="475" y="101" text-anchor="middle">page cache?</text>
+  <text class="small" x="475" y="124" text-anchor="middle">buffered branch</text>
+
+  <rect class="observe" x="670" y="70" width="210" height="70"/>
+  <text class="label" x="775" y="101" text-anchor="middle">early return</text>
+  <text class="small" x="775" y="124" text-anchor="middle">no block request</text>
+
+  <path class="flow" d="M295 105 H380"/>
+  <path class="return" d="M570 105 H670"/>
+  <text class="small" x="620" y="92" text-anchor="middle">hit</text>
+
+  <rect class="box" x="115" y="255" width="205" height="65"/>
+  <text class="label" x="217" y="283" text-anchor="middle">filesystem map</text>
+  <text class="small" x="217" y="305" text-anchor="middle">regular file route</text>
+
+  <rect class="box" x="115" y="345" width="205" height="65"/>
+  <text class="label" x="217" y="373" text-anchor="middle">raw block device</text>
+  <text class="small" x="217" y="395" text-anchor="middle">real device route</text>
+
+  <rect class="observe" x="115" y="425" width="205" height="55"/>
+  <text class="label" x="217" y="450" text-anchor="middle">userspace NBD log</text>
+  <text class="small" x="217" y="470" text-anchor="middle">mock ends here</text>
+
+  <rect class="box" x="430" y="330" width="180" height="70"/>
+  <text class="label" x="520" y="361" text-anchor="middle">blk-mq</text>
+  <text class="small" x="520" y="384" text-anchor="middle">stage / dispatch</text>
+
+  <rect class="box" x="730" y="330" width="220" height="70"/>
+  <text class="label" x="840" y="356" text-anchor="middle">NVMe host path</text>
+  <text class="small" x="840" y="381" text-anchor="middle">SQ → doorbell → CQ</text>
+
+  <path class="flow" d="M475 140 V235 H217 V255"/>
+  <path class="flow" d="M320 287 H390 V350 H430"/>
+  <path class="flow" d="M320 377 H430"/>
+  <path class="boundary" d="M320 452 H385"/>
+  <path class="boundary" d="M385 440 L400 464 M400 440 L385 464"/>
+  <text class="small" x="500" y="462" text-anchor="middle">no physical-device inference</text>
+  <path class="flow" d="M610 365 H730"/>
+
+  <rect class="opaque" x="270" y="575" width="330" height="82"/>
+  <text class="label" x="435" y="606" text-anchor="middle">controller + firmware / FTL</text>
+  <text class="small" x="435" y="631" text-anchor="middle">opaque below the host LBA</text>
+
+  <rect class="box" x="745" y="575" width="220" height="82"/>
+  <text class="label" x="855" y="606" text-anchor="middle">NAND media</text>
+  <text class="small" x="855" y="631" text-anchor="middle" style="font-size:12px">page read/program · block erase</text>
+
+  <path class="flow" d="M840 400 V530 H600 V595"/>
+  <path class="flow" d="M600 616 H745"/>
+
+  <rect class="observe" x="980" y="290" width="165" height="150"/>
+  <text class="label" x="1062" y="323" text-anchor="middle">observations</text>
+  <text class="small" x="1000" y="353">• syscall return</text>
+  <text class="small" x="1000" y="380">• NBD JSONL</text>
+  <text class="small" x="1000" y="407">• fio output</text>
+</svg>

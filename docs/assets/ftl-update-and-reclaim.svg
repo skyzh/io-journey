@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 610" role="img" aria-labelledby="title desc">
+  <title id="title">Illustrative FTL update and garbage collection</title>
+  <desc id="desc">Three panels show an LBA mapped to page P1, an overwrite remapped to free page P7 while P1 becomes invalid, and later garbage collection copying live pages before erasing a block.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .panel { fill: #f8fafc; stroke: #94a3b8; stroke-width: 2; rx: 16; }
+      .page { fill: #ffffff; stroke: #475569; stroke-width: 2; }
+      .live { fill: #dcfce7; stroke: #15803d; stroke-width: 2; }
+      .new { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 3; }
+      .invalid { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; }
+      .erased { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 7 6; }
+      .label { font: 600 18px system-ui, sans-serif; fill: #0f172a; }
+      .small { font: 15px system-ui, sans-serif; fill: #334155; }
+      .flow { fill: none; stroke: #334155; stroke-width: 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text class="label" x="600" y="35" text-anchor="middle">Illustrative FTL behavior — not a vendor layout</text>
+
+  <rect class="panel" x="25" y="60" width="360" height="485"/>
+  <rect class="panel" x="420" y="60" width="360" height="485"/>
+  <rect class="panel" x="815" y="60" width="360" height="485"/>
+  <text class="label" x="205" y="95" text-anchor="middle">1 · Before</text>
+  <text class="label" x="600" y="95" text-anchor="middle">2 · Out-of-place update</text>
+  <text class="label" x="995" y="95" text-anchor="middle">3 · Later reclaim</text>
+
+  <text class="small" x="70" y="135">mapping: LBA A → P1</text>
+  <path class="flow" d="M145 145 V190"/>
+  <rect class="live" x="75" y="195" width="120" height="62"/>
+  <text class="label" x="135" y="232" text-anchor="middle">P1 · A</text>
+  <rect class="page" x="195" y="195" width="120" height="62"/>
+  <text class="small" x="255" y="232" text-anchor="middle">P2 · B</text>
+  <rect class="page" x="75" y="257" width="120" height="62"/>
+  <text class="small" x="135" y="294" text-anchor="middle">P3 · C</text>
+  <rect class="page" x="195" y="257" width="120" height="62"/>
+  <text class="small" x="255" y="294" text-anchor="middle">P4 · free</text>
+  <text class="small" x="195" y="350" text-anchor="middle">erase block 0</text>
+
+  <text class="small" x="465" y="135">mapping changes: LBA A → P7</text>
+  <rect class="invalid" x="470" y="195" width="120" height="62"/>
+  <text class="label" x="530" y="223" text-anchor="middle">P1 · old A</text>
+  <text class="small" x="530" y="244" text-anchor="middle">invalid</text>
+  <rect class="live" x="590" y="195" width="120" height="62"/>
+  <text class="small" x="650" y="232" text-anchor="middle">P2 · B</text>
+  <rect class="live" x="470" y="257" width="120" height="62"/>
+  <text class="small" x="530" y="294" text-anchor="middle">P3 · C</text>
+  <rect class="page" x="590" y="257" width="120" height="62"/>
+  <text class="small" x="650" y="294" text-anchor="middle">P4 · free</text>
+  <rect class="new" x="530" y="380" width="140" height="62"/>
+  <text class="label" x="600" y="417" text-anchor="middle">P7 · new A</text>
+  <path class="flow" d="M600 165 V380"/>
+
+  <text class="small" x="860" y="135">copy live pages, then erase old block</text>
+  <rect class="erased" x="865" y="195" width="240" height="124"/>
+  <text class="label" x="985" y="251" text-anchor="middle">erase block 0</text>
+  <text class="small" x="985" y="276" text-anchor="middle">available after erase</text>
+  <rect class="live" x="865" y="380" width="80" height="62"/>
+  <text class="small" x="905" y="417" text-anchor="middle">B'</text>
+  <rect class="live" x="945" y="380" width="80" height="62"/>
+  <text class="small" x="985" y="417" text-anchor="middle">C'</text>
+  <rect class="new" x="1025" y="380" width="80" height="62"/>
+  <text class="small" x="1065" y="417" text-anchor="middle">A</text>
+  <path class="flow" d="M985 319 V365 H905 V380"/>
+
+  <text class="small" x="600" y="580" text-anchor="middle">TRIM is a host hint; it does not require immediate physical erase or zero-filled readback.</text>
+</svg>
