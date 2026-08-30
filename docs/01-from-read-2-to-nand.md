@@ -32,7 +32,7 @@ For a physical NVMe-over-PCIe example, host software places a command into a mem
 
 The controller receives logical block addresses, not a physical NAND page number. Firmware commonly includes a flash translation layer (FTL) that maps logical addresses to physical locations and participates in allocation, garbage collection, wear management, and error handling. That is an opacity boundary: a host trace can show a submitted LBA, but usually cannot tell whether controller DRAM, flash media, background work, or a vendor-specific policy satisfied it.
 
-At the media boundary, NAND exposes page-oriented read/program operations and block-oriented erase operations. It is inaccurate to summarize all NAND as “sequential append only.” A common update pattern programs a different free page, changes the logical mapping, leaves the old page invalid, and reclaims the containing erase block later. The exact geometry and constraints are device-specific; one concrete vendor datasheet illustrates separate [page program and block erase operations](https://europe.kioxia.com/content/dam/kioxia/newidr/productinfo/datasheet/201910/DST_TH58NYG3S0HBAI4-TDE_EN_31565.pdf).
+At the media boundary, NAND flash reads and writes in page units and erases in block units, as Kioxia's [technical overview](https://www.kioxia.com/en-jp/rd/technology/topics/topics-51.html) explains. It is inaccurate to summarize all NAND as “sequential append only.” A common update pattern programs a different free page, changes the logical mapping, leaves the old page invalid, and reclaims the containing erase block later. The exact geometry and constraints are device-specific.
 
 ![An illustrative logical-to-physical update followed by later garbage collection.](assets/ftl-update-and-reclaim.svg)
 
