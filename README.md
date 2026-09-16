@@ -34,9 +34,10 @@ The two explicit verification directories contain disposable evidence. Remove on
 
 ## Independent `fio` check on Linux
 
-The supplied experiments need a Linux `fio` build with its libnbd-backed `nbd` engine. Confirm that surface before running anything:
+The supplied experiments need a Linux `fio` build with its libnbd-backed `nbd` engine and Python 3's standard JSON decoder. Confirm both surfaces before running anything:
 
 ```console
+command -v python3
 fio --enghelp=nbd
 ```
 

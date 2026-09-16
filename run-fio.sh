@@ -31,6 +31,10 @@ if ! command -v fio >/dev/null 2>&1; then
   echo "fio is required" >&2
   exit 2
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required to validate fio JSON output" >&2
+  exit 2
+fi
 if ! fio --enghelp=nbd >/dev/null 2>&1; then
   echo "this fio build lacks the libnbd-backed nbd ioengine" >&2
   exit 2
@@ -99,12 +103,62 @@ else
   exit "$fio_status"
 fi
 
-json_start=$(awk '/^[[:space:]]*{/ { print NR; exit }' "$output_dir/fio.stdout.log")
-if [[ -z "$json_start" ]]; then
-  echo "fio produced no JSON object; stdout preserved at $output_dir/fio.stdout.log" >&2
+if ! python3 - "$output_dir/fio.stdout.log" "$output_dir/fio.json" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+temporary = destination.with_name(destination.name + ".tmp")
+
+try:
+    text = source.read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+decoder = json.JSONDecoder()
+candidates = []
+for start, character in enumerate(text):
+    if character not in "[{":
+        continue
+    try:
+        value, end = decoder.raw_decode(text, start)
+    except json.JSONDecodeError:
+        continue
+    candidates.append((start, end, value))
+
+documents = []
+for candidate in candidates:
+    start, end, _ = candidate
+    if any(
+        outer_start <= start
+        and end <= outer_end
+        and (outer_start, outer_end) != (start, end)
+        for outer_start, outer_end, _ in candidates
+    ):
+        continue
+    documents.append(candidate)
+
+if len(documents) != 1:
+    raise SystemExit(1)
+
+start, end, value = documents[0]
+if not isinstance(value, dict) or not isinstance(value.get("jobs"), list):
+    raise SystemExit(1)
+
+try:
+    temporary.write_text(text[start:end], encoding="utf-8")
+    os.replace(temporary, destination)
+except BaseException:
+    temporary.unlink(missing_ok=True)
+    raise
+PY
+then
+  echo "fio output did not contain exactly one complete JSON document; stdout preserved at $output_dir/fio.stdout.log" >&2
   exit 1
 fi
-sed -n "${json_start},\$p" "$output_dir/fio.stdout.log" >"$output_dir/fio.json"
 
 wait "$server_pid"
 server_pid=

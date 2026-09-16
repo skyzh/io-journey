@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "$0")/.." && pwd -P)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/io-journey-runner-test.XXXXXX")
-trap 'rm -rf -- "$tmp"' EXIT
+runtime_parent=$(mktemp -d "${TMPDIR:-/tmp}/iojrt.XXXXXX")
+trap 'rm -rf -- "$tmp" "$runtime_parent"' EXIT
 
 failures=0
 fail() {
@@ -48,6 +49,9 @@ if len(sys.argv) != 4 or sys.argv[1] != 'serve':
     raise SystemExit('expected: rust-nbd-lab serve ROOT CONNECTIONS')
 
 root = pathlib.Path(sys.argv[2])
+state_root = pathlib.Path(os.environ['FAKE_STATE_ROOT'])
+state_root.mkdir(parents=True, exist_ok=True)
+(state_root / 'server.pid').write_text(str(os.getpid()))
 socket_path = root / 'nbd.sock'
 listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 listener.bind(str(socket_path))
@@ -81,37 +85,108 @@ if [[ ${1:-} == --enghelp=nbd ]]; then
   exit 0
 fi
 
-output=
-for argument in "$@"; do
-  case "$argument" in
-    --output=*) output=${argument#--output=} ;;
-  esac
-done
-
 socket_path=${NBD_URI#*socket=}
 run_root=${socket_path%/*}
-payload='libnbd: connected to private test socket\n{"jobs":[{"jobname":"flush"}]}\n'
-if [[ -n "$output" ]]; then
-  printf '%b' "$payload" >"$output"
-else
-  printf '%b' "$payload"
-fi
+case ${FAKE_FIO_CASE:-prefix} in
+  prefix)
+    printf '%s\n' 'libnbd: connected to private test socket' \
+      '{"jobs":[{"jobname":"flush"}]}'
+    ;;
+  trailing)
+    printf '%s\n' '{"jobs":[{"jobname":"flush"}]}' \
+      'libnbd: connection closed cleanly'
+    ;;
+  truncated)
+    printf '%s' 'libnbd: connected'
+    printf '\n%s' '{"jobs":[{"jobname":"flush"}]'
+    ;;
+  missing)
+    printf '%s\n' 'libnbd: connected, but no document followed'
+    ;;
+  multiple)
+    printf '%s\n' '{"jobs":[{"jobname":"flush"}]}' \
+      '{"jobs":[{"jobname":"flush-again"}]}'
+    ;;
+  command-failure)
+    printf '%s\n' 'libnbd: connection failed after partial output' \
+      '{"jobs":['
+    ;;
+  *)
+    echo "unknown fake fio case: ${FAKE_FIO_CASE:-}" >&2
+    exit 2
+    ;;
+esac
 touch "$run_root/fio.done"
-if [[ ${FAKE_FIO_FAIL:-0} == 1 ]]; then
+if [[ ${FAKE_FIO_CASE:-} == command-failure ]]; then
   exit 23
 fi
 SH
 chmod +x "$tmp/bin/fio"
 
-output_dir="$tmp/evidence"
-runner_stderr="$tmp/runner.stderr"
-if ! PATH="$tmp/bin:$PATH" \
-  "$repo_root/run-fio.sh" "$tmp/bin/rust-nbd-lab" flush "$output_dir" \
-  2>"$runner_stderr"; then
-  fail "run-fio.sh rejected the deterministic fake fio contract"
-  sed 's/^/  runner: /' "$runner_stderr" >&2
-else
-  if ! python3 - "$output_dir/fio.json" <<'PY'
+expected_payload() {
+  case $1 in
+    prefix)
+      printf '%s\n' 'libnbd: connected to private test socket' \
+        '{"jobs":[{"jobname":"flush"}]}'
+      ;;
+    trailing)
+      printf '%s\n' '{"jobs":[{"jobname":"flush"}]}' \
+        'libnbd: connection closed cleanly'
+      ;;
+    truncated)
+      printf '%s' 'libnbd: connected'
+      printf '\n%s' '{"jobs":[{"jobname":"flush"}]'
+      ;;
+    missing)
+      printf '%s\n' 'libnbd: connected, but no document followed'
+      ;;
+    multiple)
+      printf '%s\n' '{"jobs":[{"jobname":"flush"}]}' \
+        '{"jobs":[{"jobname":"flush-again"}]}'
+      ;;
+    command-failure)
+      printf '%s\n' 'libnbd: connection failed after partial output' \
+        '{"jobs":['
+      ;;
+  esac
+}
+
+assert_cleanup() {
+  local case_name=$1
+  local state_dir=$2
+  local server_pid
+
+  server_pid=$(<"$state_dir/server.pid")
+  if kill -0 "$server_pid" 2>/dev/null; then
+    fail "$case_name left its fake NBD server running"
+  fi
+  if [[ -n $(find "$runtime_parent" -mindepth 1 -print -quit) ]]; then
+    fail "$case_name left a socket or temporary runtime behind"
+  fi
+}
+
+assert_raw_log() {
+  local case_name=$1
+  local output_dir=$2
+  if ! cmp -s "$output_dir/fio.stdout.log" <(expected_payload "$case_name"); then
+    fail "$case_name did not preserve exact raw fio stdout"
+  fi
+}
+
+run_success_case() {
+  local case_name=$1
+  local output_dir="$tmp/$case_name-evidence"
+  local state_dir="$tmp/$case_name-state"
+  local runner_stderr="$tmp/$case_name.stderr"
+  mkdir -p "$state_dir"
+
+  if ! FAKE_FIO_CASE="$case_name" FAKE_STATE_ROOT="$state_dir" \
+    TMPDIR="$runtime_parent" PATH="$tmp/bin:$PATH" \
+    "$repo_root/run-fio.sh" "$tmp/bin/rust-nbd-lab" flush "$output_dir" \
+    2>"$runner_stderr"; then
+    fail "$case_name: run-fio.sh rejected one complete fio JSON document"
+    sed 's/^/  runner: /' "$runner_stderr" >&2
+  elif ! python3 - "$output_dir/fio.json" <<'PY'
 import json
 import pathlib
 import sys
@@ -122,38 +197,51 @@ if document['jobs'][0]['jobname'] != 'flush':
     raise SystemExit('unexpected fio JSON payload')
 PY
   then
-    fail "fio.json is not strict parseable JSON"
+    fail "$case_name: fio.json is not the expected strict JSON document"
   fi
 
-  diagnostics_found=false
-  if grep -q 'libnbd: connected to private test socket' "$runner_stderr"; then
-    diagnostics_found=true
-  fi
-  for log in "$output_dir"/*.log; do
-    if [[ -f "$log" ]] && grep -q 'libnbd: connected to private test socket' "$log"; then
-      diagnostics_found=true
-    fi
-  done
-  if [[ "$diagnostics_found" != true ]]; then
-    fail "libnbd connection diagnostics were not preserved outside fio.json"
-  fi
-fi
+  assert_raw_log "$case_name" "$output_dir"
+  assert_cleanup "$case_name" "$state_dir"
+}
 
-failure_output="$tmp/failure-evidence"
-failure_stderr="$tmp/failure.stderr"
-if FAKE_FIO_FAIL=1 PATH="$tmp/bin:$PATH" \
-  "$repo_root/run-fio.sh" "$tmp/bin/rust-nbd-lab" flush "$failure_output" \
-  2>"$failure_stderr"; then
-  fail "run-fio.sh hid the fake fio command failure"
-else
-  if [[ ! -f "$failure_output/fio.stdout.log" ]] || \
-    ! grep -q 'libnbd: connected to private test socket' "$failure_output/fio.stdout.log"; then
-    fail "failed fio stdout was not preserved"
+run_failure_case() {
+  local case_name=$1
+  local expected_status=${2:-1}
+  local output_dir="$tmp/$case_name-evidence"
+  local state_dir="$tmp/$case_name-state"
+  local runner_stderr="$tmp/$case_name.stderr"
+  local status
+  mkdir -p "$state_dir"
+
+  set +e
+  FAKE_FIO_CASE="$case_name" FAKE_STATE_ROOT="$state_dir" \
+    TMPDIR="$runtime_parent" PATH="$tmp/bin:$PATH" \
+    "$repo_root/run-fio.sh" "$tmp/bin/rust-nbd-lab" flush "$output_dir" \
+    2>"$runner_stderr"
+  status=$?
+  set -e
+
+  if [[ $status -eq 0 ]]; then
+    fail "$case_name: run-fio.sh accepted invalid or ambiguous output"
+  elif [[ $expected_status -ne 0 && $status -ne $expected_status ]]; then
+    fail "$case_name: expected status $expected_status, got $status"
   fi
-  if ! grep -q 'fio failed; stdout preserved at' "$failure_stderr"; then
-    fail "fio failure did not identify its preserved evidence"
+  if [[ -e "$output_dir/fio.json" ]]; then
+    fail "$case_name: failed run left a stale fio.json"
   fi
-fi
+  assert_raw_log "$case_name" "$output_dir"
+  if ! grep -Fq "stdout preserved at $output_dir/fio.stdout.log" "$runner_stderr"; then
+    fail "$case_name: failure did not name its preserved raw log"
+  fi
+  assert_cleanup "$case_name" "$state_dir"
+}
+
+run_success_case prefix
+run_success_case trailing
+run_failure_case truncated 1
+run_failure_case missing 1
+run_failure_case multiple 1
+run_failure_case command-failure 23
 
 if [[ $failures -ne 0 ]]; then
   exit 1
