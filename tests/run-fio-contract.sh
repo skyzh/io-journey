@@ -96,9 +96,20 @@ case ${FAKE_FIO_CASE:-prefix} in
     printf '%s\n' '{"jobs":[{"jobname":"flush"}]}' \
       'libnbd: connection closed cleanly'
     ;;
+  lexical)
+    printf '%s\n' 'libnbd: [debug] {connected}' \
+      '{"jobs":[{"jobname":"flush","message":"literal } { [ ]"}]}' \
+      'libnbd: [done]'
+    ;;
   truncated)
     printf '%s' 'libnbd: connected'
     printf '\n%s' '{"jobs":[{"jobname":"flush"}]'
+    ;;
+  nested-truncated)
+    printf '%s' '{"wrapper":{"jobs":[]}'
+    ;;
+  trailing-truncated)
+    printf '%s\n%s' '{"jobs":[{"jobname":"flush"}]}' '{"wrapper":'
     ;;
   missing)
     printf '%s\n' 'libnbd: connected, but no document followed'
@@ -133,9 +144,20 @@ expected_payload() {
       printf '%s\n' '{"jobs":[{"jobname":"flush"}]}' \
         'libnbd: connection closed cleanly'
       ;;
+    lexical)
+      printf '%s\n' 'libnbd: [debug] {connected}' \
+        '{"jobs":[{"jobname":"flush","message":"literal } { [ ]"}]}' \
+        'libnbd: [done]'
+      ;;
     truncated)
       printf '%s' 'libnbd: connected'
       printf '\n%s' '{"jobs":[{"jobname":"flush"}]'
+      ;;
+    nested-truncated)
+      printf '%s' '{"wrapper":{"jobs":[]}'
+      ;;
+    trailing-truncated)
+      printf '%s\n%s' '{"jobs":[{"jobname":"flush"}]}' '{"wrapper":'
       ;;
     missing)
       printf '%s\n' 'libnbd: connected, but no document followed'
@@ -238,7 +260,10 @@ run_failure_case() {
 
 run_success_case prefix
 run_success_case trailing
+run_success_case lexical
 run_failure_case truncated 1
+run_failure_case nested-truncated 1
+run_failure_case trailing-truncated 1
 run_failure_case missing 1
 run_failure_case multiple 1
 run_failure_case command-failure 23

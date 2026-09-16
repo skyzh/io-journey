@@ -119,27 +119,49 @@ except (OSError, UnicodeError):
     raise SystemExit(1)
 
 decoder = json.JSONDecoder()
-candidates = []
-for start, character in enumerate(text):
-    if character not in "[{":
+top_level_starts = []
+stack = []
+in_string = False
+escaped = False
+matching_open = {"]": "[", "}": "{"}
+
+for index, character in enumerate(text):
+    if not stack:
+        if character in "[{":
+            top_level_starts.append(index)
+            stack.append(character)
         continue
+
+    if in_string:
+        if escaped:
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == '"':
+            in_string = False
+    elif character == '"':
+        in_string = True
+    elif character in "[{":
+        stack.append(character)
+    elif character in "]}" and stack[-1] == matching_open[character]:
+        stack.pop()
+
+documents = []
+for start in top_level_starts:
     try:
         value, end = decoder.raw_decode(text, start)
     except json.JSONDecodeError:
+        probe = start + 1
+        while probe < len(text) and text[probe].isspace():
+            probe += 1
+        if probe == len(text):
+            raise SystemExit(1)
+        if text[start] == "{" and text[probe] in '"}':
+            raise SystemExit(1)
+        if text[start] == "[" and text[probe] in '[{"-0123456789tfn':
+            raise SystemExit(1)
         continue
-    candidates.append((start, end, value))
-
-documents = []
-for candidate in candidates:
-    start, end, _ = candidate
-    if any(
-        outer_start <= start
-        and end <= outer_end
-        and (outer_start, outer_end) != (start, end)
-        for outer_start, outer_end, _ in candidates
-    ):
-        continue
-    documents.append(candidate)
+    documents.append((start, end, value))
 
 if len(documents) != 1:
     raise SystemExit(1)
