@@ -49,7 +49,7 @@ Then run each finite experiment into a new output directory:
 ./run-fio.sh ./target/release/rust-nbd-lab trim  evidence/trim-a
 ```
 
-For reproducibility, run all four jobs twice and compare each pair of `events.jsonl` files. Preserve the corresponding `fio.json` files: latency is environmental, while operation type, offset, length, and order are the deterministic contract.
+For reproducibility, run all four jobs twice and compare each pair of `events.jsonl` files. Preserve the corresponding `fio.json` files: latency is environmental, while operation type, offset, length, and order are the deterministic contract. Each output directory also keeps fio's raw standard output in `fio.stdout.log`, separate from the parseable JSON artifact, so libnbd connection diagnostics remain available.
 
 The current macOS development host has no suitable `fio`/libnbd surface. The local Rust client is protocol evidence, not a substitute for that independent Linux acceptance run. Do not start a VM merely to bypass this gate on an unattended machine.
 

@@ -88,10 +88,23 @@ fi
 
 NBD_URI="nbd+unix:///?socket=$run_root/nbd.sock" \
   fio --eta=never --output-format=json \
-  --output="$output_dir/fio.json" "$script_dir/fio/$experiment.fio" &
+  "$script_dir/fio/$experiment.fio" >"$output_dir/fio.stdout.log" &
 fio_pid=$!
-wait "$fio_pid"
-fio_pid=
+if wait "$fio_pid"; then
+  fio_pid=
+else
+  fio_status=$?
+  fio_pid=
+  echo "fio failed; stdout preserved at $output_dir/fio.stdout.log" >&2
+  exit "$fio_status"
+fi
+
+json_start=$(awk '/^[[:space:]]*{/ { print NR; exit }' "$output_dir/fio.stdout.log")
+if [[ -z "$json_start" ]]; then
+  echo "fio produced no JSON object; stdout preserved at $output_dir/fio.stdout.log" >&2
+  exit 1
+fi
+sed -n "${json_start},\$p" "$output_dir/fio.stdout.log" >"$output_dir/fio.json"
 
 wait "$server_pid"
 server_pid=
