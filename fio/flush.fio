@@ -11,4 +11,4 @@ group_reporting=1
 
 [flush]
 rw=write
-fsync=1
+fsync_on_close=1

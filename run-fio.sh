@@ -31,6 +31,10 @@ if ! command -v fio >/dev/null 2>&1; then
   echo "fio is required" >&2
   exit 2
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required to validate fio JSON output" >&2
+  exit 2
+fi
 if ! fio --enghelp=nbd >/dev/null 2>&1; then
   echo "this fio build lacks the libnbd-backed nbd ioengine" >&2
   exit 2
@@ -88,10 +92,104 @@ fi
 
 NBD_URI="nbd+unix:///?socket=$run_root/nbd.sock" \
   fio --eta=never --output-format=json \
-  --output="$output_dir/fio.json" "$script_dir/fio/$experiment.fio" &
+  "$script_dir/fio/$experiment.fio" >"$output_dir/fio.stdout.log" &
 fio_pid=$!
-wait "$fio_pid"
-fio_pid=
+if wait "$fio_pid"; then
+  fio_pid=
+else
+  fio_status=$?
+  fio_pid=
+  echo "fio failed; stdout preserved at $output_dir/fio.stdout.log" >&2
+  exit "$fio_status"
+fi
+
+if ! python3 - "$output_dir/fio.stdout.log" "$output_dir/fio.json" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+temporary = destination.with_name(destination.name + ".tmp")
+
+try:
+    text = source.read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+decoder = json.JSONDecoder()
+top_level_starts = []
+stack = []
+in_string = False
+escaped = False
+matching_open = {"]": "[", "}": "{"}
+
+def plausible_container_start(position):
+    probe = position + 1
+    while probe < len(text) and text[probe].isspace():
+        probe += 1
+    if probe == len(text):
+        return True
+
+    character = text[probe]
+    if text[position] == "{":
+        return character in '"}'
+    if character in '][{"-' or character.isdigit():
+        return True
+    if character in "tfn":
+        literal = {"t": "true", "f": "false", "n": "null"}[character]
+        token = text[probe : probe + len(literal)]
+        return literal.startswith(token) or token.startswith(literal)
+    return False
+
+for index, character in enumerate(text):
+    if not stack:
+        if character in "[{" and plausible_container_start(index):
+            top_level_starts.append(index)
+            stack.append(character)
+        continue
+
+    if in_string:
+        if escaped:
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == '"':
+            in_string = False
+    elif character == '"':
+        in_string = True
+    elif character in "[{":
+        stack.append(character)
+    elif character in "]}" and stack[-1] == matching_open[character]:
+        stack.pop()
+
+documents = []
+for start in top_level_starts:
+    try:
+        value, end = decoder.raw_decode(text, start)
+    except json.JSONDecodeError:
+        raise SystemExit(1)
+    documents.append((start, end, value))
+
+if len(documents) != 1:
+    raise SystemExit(1)
+
+start, end, value = documents[0]
+if not isinstance(value, dict) or not isinstance(value.get("jobs"), list):
+    raise SystemExit(1)
+
+try:
+    temporary.write_text(text[start:end], encoding="utf-8")
+    os.replace(temporary, destination)
+except BaseException:
+    temporary.unlink(missing_ok=True)
+    raise
+PY
+then
+  echo "fio output did not contain exactly one complete JSON document; stdout preserved at $output_dir/fio.stdout.log" >&2
+  exit 1
+fi
 
 wait "$server_pid"
 server_pid=
