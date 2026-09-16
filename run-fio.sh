@@ -125,9 +125,27 @@ in_string = False
 escaped = False
 matching_open = {"]": "[", "}": "{"}
 
+def plausible_container_start(position):
+    probe = position + 1
+    while probe < len(text) and text[probe].isspace():
+        probe += 1
+    if probe == len(text):
+        return True
+
+    character = text[probe]
+    if text[position] == "{":
+        return character in '"}'
+    if character in '][{"-' or character.isdigit():
+        return True
+    if character in "tfn":
+        literal = {"t": "true", "f": "false", "n": "null"}[character]
+        token = text[probe : probe + len(literal)]
+        return literal.startswith(token) or token.startswith(literal)
+    return False
+
 for index, character in enumerate(text):
     if not stack:
-        if character in "[{":
+        if character in "[{" and plausible_container_start(index):
             top_level_starts.append(index)
             stack.append(character)
         continue
@@ -151,16 +169,7 @@ for start in top_level_starts:
     try:
         value, end = decoder.raw_decode(text, start)
     except json.JSONDecodeError:
-        probe = start + 1
-        while probe < len(text) and text[probe].isspace():
-            probe += 1
-        if probe == len(text):
-            raise SystemExit(1)
-        if text[start] == "{" and text[probe] in '"}':
-            raise SystemExit(1)
-        if text[start] == "[" and text[probe] in '[{"-0123456789tfn':
-            raise SystemExit(1)
-        continue
+        raise SystemExit(1)
     documents.append((start, end, value))
 
 if len(documents) != 1:

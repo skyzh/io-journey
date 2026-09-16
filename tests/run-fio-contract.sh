@@ -101,6 +101,16 @@ case ${FAKE_FIO_CASE:-prefix} in
       '{"jobs":[{"jobname":"flush","message":"literal } { [ ]"}]}' \
       'libnbd: [done]'
     ;;
+  unmatched-prefix)
+    printf '%s\n%s\n' 'diag: opened { socket' \
+      '{"jobs":[{"jobname":"flush"}]}'
+    ;;
+  unmatched-controls)
+    printf '%s\n' 'diag: opened [ socket' \
+      'diag: unmatched " string and escape \' \
+      '{"jobs":[{"jobname":"flush","message":"escaped quote: \" and slash: \\ and } ]"}]}' \
+      'diag: left { socket'
+    ;;
   truncated)
     printf '%s' 'libnbd: connected'
     printf '\n%s' '{"jobs":[{"jobname":"flush"}]'
@@ -149,6 +159,16 @@ expected_payload() {
         '{"jobs":[{"jobname":"flush","message":"literal } { [ ]"}]}' \
         'libnbd: [done]'
       ;;
+    unmatched-prefix)
+      printf '%s\n%s\n' 'diag: opened { socket' \
+        '{"jobs":[{"jobname":"flush"}]}'
+      ;;
+    unmatched-controls)
+      printf '%s\n' 'diag: opened [ socket' \
+        'diag: unmatched " string and escape \' \
+        '{"jobs":[{"jobname":"flush","message":"escaped quote: \" and slash: \\ and } ]"}]}' \
+        'diag: left { socket'
+      ;;
     truncated)
       printf '%s' 'libnbd: connected'
       printf '\n%s' '{"jobs":[{"jobname":"flush"}]'
@@ -192,6 +212,10 @@ assert_raw_log() {
   local output_dir=$2
   if ! cmp -s "$output_dir/fio.stdout.log" <(expected_payload "$case_name"); then
     fail "$case_name did not preserve exact raw fio stdout"
+  fi
+  if [[ $case_name == unmatched-prefix ]] &&
+    [[ $(wc -c <"$output_dir/fio.stdout.log") -ne 53 ]]; then
+    fail "$case_name did not preserve the exact 53-byte witness"
   fi
 }
 
@@ -261,6 +285,8 @@ run_failure_case() {
 run_success_case prefix
 run_success_case trailing
 run_success_case lexical
+run_success_case unmatched-prefix
+run_success_case unmatched-controls
 run_failure_case truncated 1
 run_failure_case nested-truncated 1
 run_failure_case trailing-truncated 1
