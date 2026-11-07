@@ -1,6 +1,0 @@
-[package]
-name = "rust-nbd-lab"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
