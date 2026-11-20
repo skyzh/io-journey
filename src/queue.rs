@@ -172,7 +172,8 @@ mod tests {
         assert_eq!(queue.pending.len(), 1);
         assert_eq!(*queue.read(0, &mut trace).unwrap(), [2; BLOCK_BYTES]);
 
-        let mut reopened = BlockQueue::new(Ftl::open(queue.power_cut()), NonZeroUsize::MIN);
+        let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
+        let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
         assert_eq!(*reopened.read(0, &mut trace).unwrap(), [1; BLOCK_BYTES]);
     }
 

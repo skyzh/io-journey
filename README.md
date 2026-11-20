@@ -63,6 +63,14 @@ leaves the checkpoint's mapping at the previous complete page. In both cases
 a fresh queue, FTL, and filesystem reopen the surviving image in the same
 process and verify the two acknowledged records.
 
+The FTL keeps at least four erased pages for moving live data during
+collection. A torn program can use one of those pages. When the surviving
+image has fewer than four erased pages, reopening moves live pages out of
+an erase block that contains stale pages and erases that block. Both the
+live and durable RAM images start from the reclaimed state. A regression
+test cuts four consecutive overwrites, checks all committed blocks on each
+reopen, then writes and recovers a new value.
+
 The course follow-ups cover metadata journaling and Linux integration through
 ublk, FUSE, and io_uring. The earlier NBD and `fio` pilot is available in Git
 history at `073e7f4` ("Fix fio FLUSH and JSON evidence (#2)").
