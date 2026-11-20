@@ -577,7 +577,7 @@ mod tests {
                 .lba,
             1
         );
-        assert_eq!(*queue.ftl.read(0, &mut trace).unwrap(), [2; BLOCK_BYTES]);
+        check_block(0, &queue.ftl.read(0, &mut trace).unwrap(), 2);
         for id in [flush, later] {
             let completion = queue
                 .complete_next(Driver::Explicit, &mut trace)
@@ -602,8 +602,8 @@ mod tests {
         let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
         let blocks = reopened.read_range(0, 3, &mut trace).unwrap();
         assert_eq!(blocks.len(), 3);
-        for (block, byte) in blocks.iter().zip([1, 1, 0]) {
-            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        for (lba, (block, byte)) in blocks.iter().zip([1, 1, 0]).enumerate() {
+            check_block(lba, block, byte);
         }
     }
 }

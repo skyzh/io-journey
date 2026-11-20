@@ -92,8 +92,9 @@ and 5,099,520 write bytes. All four runs requested depth eight.
 In this guest sweep the eligible reads advanced and waited less in
 the server. End-to-end p99 grew and throughput fell in both pairs.
 A separate learner walkthrough also found shorter server wait. Its
-fio p99 fell and throughput rose in its two matched pairs. Compare
-each sweep at the achieved depths reported by fio.
-The depth-one run achieved depth one throughout, and the 16 KiB
-run achieved depth eight. The benchmark's report retains both rows,
-including their different request sizes, byte counts, and timings.
+fio p99 fell and throughput rose in both pairs, with different
+achieved-depth distributions. Compare each sweep using the achieved
+depths reported by fio.
+In the author's sweep, the depth-one run achieved depth one throughout,
+and the 16 KiB run achieved depth eight. The benchmark's report retains
+both rows with their request sizes, byte counts, and timings.
