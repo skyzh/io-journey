@@ -13,6 +13,7 @@ owned_mount() {
 }
 
 start_mount() {
+    mount_absent "$mount_dir" || fail 'Use an inspectable, unmounted FUSE path.'
     "$binary" mount "$backend" "$mount_dir" "$mount_name" >> "$run_dir/fuse.log" 2>&1 &
     fuse_pid=$!
     local attempt
@@ -25,19 +26,19 @@ start_mount() {
 }
 
 stop_mount() {
+    # A rejected child has no worker of its own to clean up.
+    [[ -n "$fuse_pid" ]] || return 0
     unmount_owned_path "$mount_dir" owned_mount || return 1
-    if [[ -n "$fuse_pid" ]]; then
-        local status=0 attempt
-        for attempt in {1..50}; do
-            if ! kill -0 "$fuse_pid" 2>/dev/null; then
-                wait "$fuse_pid" || status=$?
-                fuse_pid=
-                return "$status"
-            fi
-            sleep 0.1
-        done
-        return 1
-    fi
+    local status=0 attempt
+    for attempt in {1..50}; do
+        if ! kill -0 "$fuse_pid" 2>/dev/null; then
+            wait "$fuse_pid" || status=$?
+            fuse_pid=
+            return "$status"
+        fi
+        sleep 0.1
+    done
+    return 1
 }
 
 cleanup_mount() {
