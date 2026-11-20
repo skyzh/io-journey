@@ -36,7 +36,8 @@ if (( $# != 0 )); then
                 fail 'Benchmark output must be in guest tmpfs.'
             ;;
         fuse-case)
-            [[ $# == 2 ]] || fail 'Use linux/fuse/smoke.sh for the FUSE lab.'
+            [[ $# == 2 || ( $# == 3 && "$3" == learner ) ]] || fail 'Use linux/fuse/smoke.sh for the FUSE lab.'
+            if (( $# == 3 )); then build_args=(--features learner-queue); fi
             fuse_binary=$(realpath -- "$2")
             [[ -x "$fuse_binary" && $(findmnt -n -o FSTYPE -T "$fuse_binary") == tmpfs ]] ||
                 fail 'Use a FUSE binary from guest tmpfs.'

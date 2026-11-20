@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+learner-journal = ["io-journey/learner-journal"]
+
 [dependencies]
 fuser = { version = "=0.16.0", default-features = false, features = ["abi-7-31"] }
 io-journey = { path = "../.." }

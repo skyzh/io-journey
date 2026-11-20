@@ -1,13 +1,16 @@
 //! A small root directory with copy-on-write file data and a metadata redo log.
 
 mod format;
+#[cfg_attr(feature = "learner-journal", path = "../course/learner/journal.rs")]
+#[cfg_attr(not(feature = "learner-journal"), path = "journal_fs/reference.rs")]
+mod protocol;
 #[cfg(test)]
 mod tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
-use self::format::{commit_record, decode_commit, frame_checksum, Metadata};
+use self::format::{commit_record, frame_checksum, Metadata};
 use crate::nand::{Block, BLOCK_BYTES};
 
 pub const ROOT_INODE: u64 = 1;
@@ -79,25 +82,7 @@ impl<D: Disk> JournalFs<D> {
 
     pub fn open(mut disk: D) -> io::Result<Self> {
         check_geometry(&disk)?;
-        let marker = disk.read_block(COMMIT)?;
-        let metadata = match decode_commit(&marker)? {
-            None => {
-                let home = disk.read_block(HOME)?;
-                Metadata::decode(&home, disk.block_count())?
-            }
-            Some((generation, checksum)) => {
-                let redo = disk.read_block(REDO)?;
-                if frame_checksum(&redo) != checksum {
-                    return Err(corrupt("committed redo checksum mismatch"));
-                }
-                let metadata = Metadata::decode(&redo, disk.block_count())?;
-                if metadata.generation != generation {
-                    return Err(corrupt("committed redo generation mismatch"));
-                }
-                install_home(&mut disk, redo)?;
-                metadata
-            }
-        };
+        let metadata = recover_metadata(&mut disk)?;
         Ok(Self::new(disk, metadata))
     }
 
@@ -330,11 +315,7 @@ impl<D: Disk> JournalFs<D> {
         // A failed barrier can have reached the device. Block further updates
         // until replay determines which allocations the durable metadata owns.
         self.needs_reopen = true;
-        self.disk.flush()?;
-        self.disk.write_block(REDO, redo.clone())?;
-        self.disk.flush()?;
-        self.disk.write_block(COMMIT, marker)?;
-        self.disk.flush()?;
+        protocol::persist_redo(&mut self.disk, &redo, marker)?;
         install_home(&mut self.disk, redo)?;
         self.durable = next;
         self.needs_reopen = false;
@@ -409,6 +390,14 @@ fn install_home(disk: &mut impl Disk, redo: Block) -> io::Result<()> {
     disk.flush()?;
     disk.write_block(COMMIT, Box::new([0; BLOCK_BYTES]))?;
     disk.flush()
+}
+
+fn recover_metadata(disk: &mut impl Disk) -> io::Result<Metadata> {
+    let (metadata, redo) = protocol::read_committed(disk)?;
+    if let Some(redo) = redo {
+        install_home(disk, redo)?;
+    }
+    Ok(metadata)
 }
 
 fn check_geometry(disk: &impl Disk) -> io::Result<()> {
