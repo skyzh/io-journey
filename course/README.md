@@ -1,10 +1,23 @@
-# I/O Journey userspace checkpoints
+# I/O Journey chapters
+
+[Start here](START.md) for setup and the first run. The cumulative chapters
+carry your changes forward in one checkout.
+
+1. [NAND to SSD](01-ftl.md). Map writes, reclaim a block, and recover an ext4 log using your FTL.
+2. Blocks in flight. Add bounded requests and flush ordering.
+3. Blocks to files. Publish file and directory changes across a cut.
+4. Efficient application I/O. Compare durable append engines.
+
+## Independent checkpoints
+
+These are optional exercises in separate snapshots. Use the cumulative
+chapters above to carry your implementation forward in the course checkout.
 
 Run the [append-and-recover demo](../README.md#run-the-demo) first. Follow the
 application's two acknowledged records through the queue submissions and NAND
 page placements, then find the same records after each cut.
 
-## Open a lab
+### Open a lab
 
 Run these commands from the checkout in an OrbStack Ubuntu shell or another
 Linux shell with Bash, Git, tar, findmnt, and Rust. The Git history supplies
@@ -22,7 +35,7 @@ lab=$(./course/checkpoint.sh prepare ftl)
 chapter inside `$lab`, then run `check` again. Each prepared lab supplies
 the completed earlier layers and leaves one change for you.
 
-## 1. NAND to SSD
+### 1. NAND to SSD
 
 The predecessor programs pages and erases whole blocks. Open
 `$lab/src/ftl.rs` and find the TODO in `Ftl::write`. A write already has a
@@ -47,7 +60,7 @@ images with erased pages at different addresses, so the hook fails before
 programming any partial bytes. Reopen recovers the previous values in both
 fixtures.
 
-## 2. Blocks in flight
+### 2. Blocks in flight
 
 ```sh
 lab=$(./course/checkpoint.sh prepare queue)
@@ -63,7 +76,7 @@ durable image.
 receives backpressure for a later write, observes the completion IDs, and
 reopens the image to read the three earlier blocks.
 
-## 3. Blocks to files
+### 3. Blocks to files
 
 ```sh
 lab=$(./course/checkpoint.sh prepare filesystem)
@@ -79,7 +92,7 @@ capacity error before it reopens.
 `check` compares the complete reopened file with the bytes appended before
 the flush.
 
-## 4. Append and recover
+### 4. Append and recover
 
 ```sh
 lab=$(./course/checkpoint.sh prepare log)
