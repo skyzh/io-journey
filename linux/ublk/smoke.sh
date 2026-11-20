@@ -34,6 +34,13 @@ if (( $# != 0 )); then
             [[ -x "$fuse_binary" && $(findmnt -n -o FSTYPE -T "$fuse_binary") == tmpfs ]] ||
                 fail 'Use a FUSE binary from guest tmpfs.'
             ;;
+        append-case)
+            [[ $# == 5 && ( "$2" == ext4 || "$2" == fuse ) &&
+               ( "$3" == sync || "$3" == uring ) && ( "$4" == 4 || "$4" == 32 ) ]] ||
+                fail 'Use linux/append/benchmark.sh for the append benchmark.'
+            [[ -d "$5" && $(findmnt -n -o FSTYPE -T "$5") == tmpfs ]] ||
+                fail 'Append benchmark output must be in guest tmpfs.'
+            ;;
         *)
             fail 'Unknown lab workload.'
             ;;
@@ -52,10 +59,12 @@ device=
 trace_instance=
 mkdir "$mount_dir"
 source "$adapter_dir/build-env.sh"
-if [[ "$mode" == queue-case ]]; then
+if [[ "$mode" == queue-case || "$mode" == append-case ]]; then
     binary=$(realpath "${IO_JOURNEY_ADAPTER_BIN:?}")
     [[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
         fail 'Use an adapter binary from guest tmpfs.'
+fi
+if [[ "$mode" == queue-case ]]; then
     profile_args=("$2" "$5/server.tsv")
 fi
 
@@ -158,7 +167,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ "$mode" != queue-case ]]; then
+if [[ "$mode" == ext4 || "$mode" == fuse-case ]]; then
     build_adapter "$adapter_dir" "$run_dir"
 fi
 "$binary" serve "$socket" "${profile_args[@]}" > "$log" 2>&1 &
@@ -197,6 +206,13 @@ if [[ "$mode" == queue-case ]]; then
 fi
 if [[ "$mode" == fuse-case ]]; then
     bash "$adapter_dir/../fuse/workload.sh" "$fuse_binary" "$binary" "$socket" "$server_pid" "$node_identity" "$device_id"
+    exit 0
+fi
+if [[ "$mode" == append-case ]]; then
+    udevadm info --wait-for-initialization=10 --query=name --name="$device" >/dev/null
+    udevadm settle --timeout=10
+    udevadm lock --device="$device" --timeout=10 -- bash "$adapter_dir/../append/case.sh" \
+        "$2" "$3" "$4" "$5" "$binary" "$socket" "$server_pid" "$node_identity" "$device_id"
     exit 0
 fi
 

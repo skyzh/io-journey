@@ -1,0 +1,9 @@
+[package]
+name = "io-journey-append"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+io-journey = { path = "../.." }
+io-uring = "=0.7.16"

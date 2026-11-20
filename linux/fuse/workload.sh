@@ -23,42 +23,13 @@ fuse_pid=
 backend="$run_dir/lab.img"
 mode=image
 
-owned_mount() {
-    local identity
-    identity=$(findmnt -nr -o SOURCE,FSTYPE -M "$mount_dir") || return
-    [[ "$identity" == "$mount_name fuse" || "$identity" == "$mount_name fuse.io-journey" ]]
-}
-
-stop_mount() {
-    if mountpoint -q "$mount_dir"; then
-        owned_mount || return 1
-        umount -- "$mount_dir" || return 1
-    fi
-    if [[ -n "$fuse_pid" ]]; then
-        local status=0
-        for attempt in {1..50}; do
-            if ! kill -0 "$fuse_pid" 2>/dev/null; then
-                wait "$fuse_pid" || status=$?
-                fuse_pid=
-                return "$status"
-            fi
-            sleep 0.1
-        done
-        return 1
-    fi
-}
+source "$fuse_dir/mount.sh"
 
 cleanup() {
     local status=$?
     trap - EXIT
     set +e
-    stop_mount || status=1
-    if [[ -n "$fuse_pid" ]] && ! mountpoint -q "$mount_dir" &&
-        [[ $(readlink "/proc/$fuse_pid/exe") == "$binary" ]] &&
-        grep -z -F -x -- "$mount_name" "/proc/$fuse_pid/cmdline" >/dev/null; then
-        kill -TERM "$fuse_pid"
-        stop_mount
-    fi
+    cleanup_mount || status=1
     if (( status == 0 )); then
         rm -rf -- "$run_dir"
     else
@@ -84,17 +55,6 @@ if (( $# == 6 )); then
 else
     "$binary" new-image "$backend"
 fi
-
-start_mount() {
-    "$binary" mount "$backend" "$mount_dir" "$mount_name" >> "$run_dir/fuse.log" 2>&1 &
-    fuse_pid=$!
-    for attempt in {1..100}; do
-        if owned_mount; then return 0; fi
-        kill -0 "$fuse_pid" 2>/dev/null || fail 'FUSE exited before mounting.'
-        sleep 0.1
-    done
-    fail 'FUSE did not mount the owned backend.'
-}
 
 load_checkpoint() {
     if [[ "$mode" == ublk ]]; then
