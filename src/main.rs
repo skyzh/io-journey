@@ -48,7 +48,7 @@ fn demo(trace: &mut Trace) -> io::Result<()> {
     }
 
     trace.push("demo   power cut: reopen from the durable RAM image".into());
-    let mut queue = BlockQueue::new(Ftl::open(queue.power_cut()), QUEUE_DEPTH);
+    let mut queue = BlockQueue::new(Ftl::open(queue.power_cut(), trace)?, QUEUE_DEPTH);
     verify_records(
         &mut FileSystem::open(&mut queue, trace)?,
         &ACKNOWLEDGED,
@@ -103,7 +103,7 @@ fn demo(trace: &mut Trace) -> io::Result<()> {
         "demo   cut left {} programmed bytes on page {}. LBA {} recovers from page {committed_page}",
         tear.bytes, tear.page, tear.lba
     ));
-    let mut queue = BlockQueue::new(Ftl::open(image), QUEUE_DEPTH);
+    let mut queue = BlockQueue::new(Ftl::open(image, trace)?, QUEUE_DEPTH);
     verify_records(
         &mut FileSystem::open(&mut queue, trace)?,
         &ACKNOWLEDGED,

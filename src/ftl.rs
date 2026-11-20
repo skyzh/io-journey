@@ -52,13 +52,23 @@ pub(crate) struct Ftl {
 
 impl Ftl {
     pub(crate) fn new() -> Self {
-        Self::open(FlashImage {
+        Self::from_image(FlashImage {
             nand: Nand::new(),
             map: [None; LOGICAL_BLOCKS],
         })
     }
 
-    pub(crate) fn open(image: FlashImage) -> Self {
+    pub(crate) fn open(mut image: FlashImage, trace: &mut Trace) -> io::Result<Self> {
+        // An interrupted program can spend one of the reserved pages.
+        // Reclaim before cloning so both copies have room for the next cut.
+        if image.nand.erased_pages().count() < PAGES_PER_ERASE_BLOCK {
+            image.collect(trace)?;
+            trace.push("ftl    restored the erase-block reserve on reopen".into());
+        }
+        Ok(Self::from_image(image))
+    }
+
+    fn from_image(image: FlashImage) -> Self {
         Self {
             live: image.clone(),
             durable: image,
@@ -89,7 +99,7 @@ impl Ftl {
         // An erase block's worth of free pages leaves room to move live data
         // out of a victim before erasing it.
         if self.live.nand.erased_pages().count() <= PAGES_PER_ERASE_BLOCK {
-            self.collect(trace)?;
+            self.live.collect(trace)?;
         }
         let page = self.live.nand.erased_pages().next().expect("free page");
         self.live.nand.program(page, data)?;
@@ -149,19 +159,20 @@ impl Ftl {
         trace.push(format!("nand   {tear}"));
         Err(io::Error::other(tear))
     }
+}
 
+impl FlashImage {
     fn collect(&mut self, trace: &mut Trace) -> io::Result<()> {
-        let free = self.live.nand.erased_pages().count();
+        let free = self.nand.erased_pages().count();
         let mut victim = None;
         let mut most_stale = 0;
         for erase_block in 0..ERASE_BLOCKS {
             let pages = erase_block_pages(erase_block);
             let used = pages
                 .clone()
-                .filter(|&page| self.live.nand.read(page).is_some())
+                .filter(|&page| self.nand.read(page).is_some())
                 .count();
             let mapped = self
-                .live
                 .map
                 .iter()
                 .flatten()
@@ -177,23 +188,22 @@ impl Ftl {
         let victim = victim.ok_or_else(|| io::Error::other("no reclaimable NAND erase block"))?;
         let victim_pages = erase_block_pages(victim);
 
-        for (lba, mapping) in self.live.map.iter_mut().enumerate() {
+        for (lba, mapping) in self.map.iter_mut().enumerate() {
             if let Some(source) = mapping.filter(|page| victim_pages.contains(page)) {
                 let destination = self
-                    .live
                     .nand
                     .erased_pages()
                     .find(|page| !victim_pages.contains(page))
                     .expect("space reserved outside victim");
-                let data = self.live.nand.read(source).expect("mapped page").clone();
-                self.live.nand.program(destination, data)?;
+                let data = self.nand.read(source).expect("mapped page").clone();
+                self.nand.program(destination, data)?;
                 *mapping = Some(destination);
                 trace.push(format!(
                     "ftl    gc copy LBA {lba} from page {source} to page {destination}"
                 ));
             }
         }
-        self.live.nand.erase(victim);
+        self.nand.erase(victim);
         trace.push(format!(
             "nand   erase block {victim}, reclaim {most_stale} stale pages"
         ));
@@ -232,7 +242,7 @@ mod tests {
         assert!(trace.iter().any(|event| event.contains("gc copy LBA 0")));
         ftl.flush(&mut trace);
 
-        let ftl = Ftl::open(ftl.power_cut());
+        let ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
         for (lba, value) in [13, 42, 2, 3, 4, 5, 6, 7].into_iter().enumerate() {
             assert_eq!(*ftl.read(lba, &mut trace).unwrap(), [value; BLOCK_BYTES]);
         }
@@ -260,8 +270,50 @@ mod tests {
         assert_eq!(page[..19], [0x34; 19]);
         assert!(page[19..].iter().all(|&byte| byte == ERASED_BYTE));
         assert_eq!(
-            *Ftl::open(image).read(1, &mut trace).unwrap(),
+            *Ftl::open(image, &mut trace)
+                .unwrap()
+                .read(1, &mut trace)
+                .unwrap(),
             [0x12; BLOCK_BYTES]
         );
+    }
+
+    #[test]
+    fn repeated_torn_programs_leave_room_for_a_new_durable_write() {
+        let mut trace = Vec::new();
+        let mut ftl = Ftl::new();
+        // Leave four erased pages and at least one live page in each erase
+        // block. With no free pages, no whole block could be erased safely.
+        for (value, lba) in [0, 1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 1, 1, 1]
+            .into_iter()
+            .enumerate()
+        {
+            ftl.write(lba, Box::new([value as u8; BLOCK_BYTES]), &mut trace)
+                .unwrap();
+        }
+        ftl.flush(&mut trace);
+        let mut committed: [Block; LOGICAL_BLOCKS] =
+            std::array::from_fn(|lba| ftl.read(lba, &mut trace).unwrap());
+
+        for _ in 0..4 {
+            ftl.tear_next_program(37).unwrap();
+            let error = ftl
+                .write(1, Box::new([0x80; BLOCK_BYTES]), &mut trace)
+                .unwrap_err();
+            assert!(error.get_ref().unwrap().is::<TornProgram>());
+            ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+            for (lba, block) in committed.iter().enumerate() {
+                assert_eq!(&ftl.read(lba, &mut trace).unwrap(), block);
+            }
+        }
+
+        committed[1] = Box::new([0x91; BLOCK_BYTES]);
+        ftl.write(1, committed[1].clone(), &mut trace)
+            .expect("the reopened FTL should accept another write");
+        ftl.flush(&mut trace);
+        let ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+        for (lba, block) in committed.iter().enumerate() {
+            assert_eq!(&ftl.read(lba, &mut trace).unwrap(), block);
+        }
     }
 }
