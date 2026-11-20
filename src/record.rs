@@ -1,5 +1,10 @@
 use std::io;
 
+#[cfg_attr(feature = "learner-append", path = "../course/learner/record.rs")]
+#[cfg_attr(not(feature = "learner-append"), path = "record/reference.rs")]
+mod receipt;
+pub use receipt::decode_acknowledged;
+
 // Each record starts with a little-endian payload length and CRC-32.
 pub const HEADER_BYTES: usize = 8;
 pub const DEMO_RECORDS: [&[u8]; 2] = [b"first", b"second"];
@@ -57,4 +62,39 @@ pub(crate) fn crc32(bytes: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_receipt_recovers_the_prefix_before_an_incomplete_suffix() {
+        let mut bytes = encode(b"first").unwrap();
+        let acknowledged = bytes.len();
+        let tail = encode(b"second").unwrap();
+        bytes.extend_from_slice(&tail[..tail.len() - 1]);
+        assert_eq!(
+            decode_acknowledged(&bytes, acknowledged).unwrap(),
+            [b"first".to_vec()]
+        );
+        assert!(decode_acknowledged(&bytes, 0).unwrap().is_empty());
+        assert!(decode_acknowledged(&bytes, bytes.len()).is_err());
+    }
+
+    #[test]
+    fn corruption_or_missing_bytes_inside_the_receipt_fails() {
+        let mut bytes = encode(b"first").unwrap();
+        let acknowledged = bytes.len();
+        bytes[HEADER_BYTES] ^= 1;
+        let error = decode_acknowledged(&bytes, acknowledged).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "record checksum mismatch");
+        assert_eq!(
+            decode_acknowledged(&bytes[..acknowledged - 1], acknowledged)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
 }

@@ -1,3 +1,11 @@
+#[cfg_attr(
+    feature = "learner-append",
+    path = "../../../course/learner/append-commit.rs"
+)]
+#[cfg_attr(not(feature = "learner-append"), path = "commit/reference.rs")]
+mod commit;
+use commit::commit_group;
+
 mod engine;
 
 use std::env;
@@ -33,8 +41,15 @@ fn main() -> io::Result<()> {
         }
         [action, mount] if action == "tail" => unacknowledged_tail(Path::new(mount)),
         [action, mount] if action == "verify" => verify(Path::new(mount), COMMITTED_RECORDS),
+        [action, mount, acknowledged] if action == "verify" => {
+            let acknowledged = acknowledged
+                .to_str()
+                .and_then(|value| value.parse::<usize>().ok())
+                .ok_or_else(|| invalid("invalid acknowledged record count"))?;
+            verify(Path::new(mount), acknowledged)
+        }
         _ => Err(invalid(
-            "use run sync|uring 4|32 MOUNT, tail MOUNT, or verify MOUNT",
+            "use run sync|uring 4|32 MOUNT, tail MOUNT, or verify MOUNT [COUNT]",
         )),
     }
 }
@@ -84,21 +99,6 @@ fn run(mode: &str, group: usize, directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn commit_group(
-    group: &[Request],
-    write: &mut impl FnMut(&[Request]) -> io::Result<()>,
-    sync: &mut impl FnMut() -> io::Result<()>,
-    receipts: &mut Vec<Duration>,
-) -> io::Result<()> {
-    let ready = Instant::now();
-    for wave in group.chunks(DEPTH) {
-        write(wave)?;
-    }
-    sync()?;
-    receipts.extend(std::iter::repeat_n(ready.elapsed(), group.len()));
-    Ok(())
-}
-
 fn percentile(sorted: &[Duration], percent: usize) -> Duration {
     sorted[(sorted.len() * percent).div_ceil(100) - 1]
 }
@@ -132,7 +132,20 @@ fn unacknowledged_tail(directory: &Path) -> io::Result<()> {
 }
 
 fn verify(directory: &Path, expected: usize) -> io::Result<()> {
-    let records = record::decode(&fs::read(directory.join(FILE_NAME))?)?;
+    let bytes = fs::read(directory.join(FILE_NAME))?;
+    let acknowledged_bytes = expected
+        .checked_mul(RECORD_BYTES)
+        .ok_or_else(|| invalid("acknowledged byte count overflows"))?;
+    if bytes.len() != acknowledged_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "expected {acknowledged_bytes} bytes after reopen, found {}",
+                bytes.len()
+            ),
+        ));
+    }
+    let records = record::decode_acknowledged(&bytes, acknowledged_bytes)?;
     if records.len() != expected
         || records
             .iter()
