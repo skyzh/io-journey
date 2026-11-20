@@ -15,13 +15,14 @@ checkout inside Linux.
 ```sh
 rustc --version
 cargo --version
-findmnt -n -o FSTYPE -T /dev/shm
+findmnt -n -o FSTYPE,OPTIONS -T /dev/shm
 ls course/learner.sh course/learner/ftl.rs
 ```
 
-The filesystem command should print `tmpfs`. The demo and offline exercises
-use it for temporary and Cargo files. They run as an ordinary user with no
-third-party Rust dependencies. The course was checked on OrbStack Ubuntu
+The filesystem command should report `tmpfs` without `noexec`. Cargo
+uses it for temporary and build files and executes the compiled checks
+there. The demo and first chapter checks run as an ordinary user with
+no third-party Rust dependencies. The course was checked on OrbStack Ubuntu
 26.04.1 arm64 with Rust 1.93.1. The first ext4 lab lists the extra kernel
 tools and privileges it needs.
 

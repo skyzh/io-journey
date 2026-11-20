@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|index|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
@@ -14,6 +14,10 @@ case "$1" in
     map) test_args=(ftl::tests::successful_programs_publish_the_new_mapping -- --exact) ;;
     collect) test_args=(ftl::tests::collection_copies_live_pages_before_erasing_and_recovery_keeps_them -- --exact) ;;
     check) test_args=(ftl::tests::) ;;
+    index)
+        features=learner-index
+        test_args=(ftl::tests::index_matches_physical_pages_and_mappings_through_recovery -- --exact)
+        ;;
     admit)
         features=learner-queue
         test_args=(queue::tests::admission_returns_the_request_when_all_slots_are_occupied -- --exact)
