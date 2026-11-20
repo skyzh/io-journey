@@ -1,16 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 1 )); then
-    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check}.' >&2
+usage() {
+    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|admit|order|flush|dispatch}.' >&2
     exit 2
-fi
+}
+(( $# == 1 )) || usage
+features=learner
 case "$1" in
     previous) test_args=(nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block -- --exact) ;;
     map) test_args=(ftl::tests::successful_programs_publish_the_new_mapping -- --exact) ;;
     collect) test_args=(ftl::tests::collection_copies_live_pages_before_erasing_and_recovery_keeps_them -- --exact) ;;
     check) test_args=(ftl::tests::) ;;
-    *) printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check}.' >&2; exit 2 ;;
+    admit)
+        features=learner-queue
+        test_args=(queue::tests::admission_returns_the_request_when_all_slots_are_occupied -- --exact)
+        ;;
+    order)
+        features=learner-queue
+        test_args=(queue::tests::accepted_requests_get_distinct_ordered_completions -- --exact)
+        ;;
+    flush)
+        features=learner-queue
+        test_args=(queue::tests::)
+        ;;
+    dispatch)
+        features=learner-queue
+        test_args=(dispatch::tests::)
+        ;;
+    *) usage ;;
 esac
 
 if [[ $(findmnt -n -o FSTYPE -T /dev/shm) != tmpfs ]]; then
@@ -23,4 +41,4 @@ trap 'rm -rf -- "$scratch"' EXIT
 mkdir "$scratch/tmp"
 export CARGO_HOME="$scratch/cargo" CARGO_TARGET_DIR="$scratch/target"
 export TMPDIR="$scratch/tmp" CARGO_INCREMENTAL=0
-cargo test --locked --offline --manifest-path "$repo_dir/Cargo.toml" --features learner --lib "${test_args[@]}"
+cargo test --locked --offline --manifest-path "$repo_dir/Cargo.toml" --features "$features" --lib "${test_args[@]}"

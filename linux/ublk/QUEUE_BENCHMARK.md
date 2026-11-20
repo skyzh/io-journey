@@ -3,6 +3,8 @@
 Run this from the checkout with fio and Python 3 in the OrbStack Ubuntu
 guest. The guest also needs tracefs, udevadm with device locking, and the ublk
 setup described in the [ext4 lab](README.md).
+This command measures the supplied reference implementation. Use the
+[queue chapter](../../course/02-queue.md) to run your learner implementation.
 
 ```sh
 orb -m ubuntu -u root unshare --mount --propagation private bash linux/ublk/queue-bench.sh

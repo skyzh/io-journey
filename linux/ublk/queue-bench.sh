@@ -14,6 +14,12 @@ fail() {
 [[ -d /sys/kernel/tracing/instances ]] || fail 'Guest tracefs instances are unavailable.'
 command -v fio python3 >/dev/null
 
+build_args=()
+if (( $# != 0 )); then
+    [[ $# == 1 && "$1" == learner ]] || fail 'Use queue-bench.sh or queue-bench.sh learner.'
+    build_args=(--features learner-queue)
+fi
+
 run_dir=$(mktemp -d /dev/shm/io-journey-bench.XXXXXX)
 build_dir=$(mktemp -d /dev/shm/io-journey-bench-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT
@@ -25,9 +31,12 @@ printf 'Guest capture directory %s\n' "$run_dir"
     printf '%s\n' 'One 32 MiB ublk device per run. Write back with fua=0. Release build.'
     printf '%s\n' 'Direct io_uring randrw, 70% reads, seed 20261120, 16 MiB span.'
     printf '%s\n' '2 MiB warmup, then 16 MiB measured, with end_fsync=0.'
+    if (( ${#build_args[@]} != 0 )); then
+        printf '%s\n' 'Uses the learner FTL, inner queue, and Linux dispatch policy.'
+    fi
 } > "$run_dir/environment.txt"
 
-build_adapter "$adapter_dir" "$build_dir" --release
+build_adapter "$adapter_dir" "$build_dir" --release "${build_args[@]}"
 export IO_JOURNEY_ADAPTER_BIN="$build_dir/target/release/io-journey-ublk"
 
 run_case() {
