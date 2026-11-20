@@ -312,6 +312,39 @@ mod tests {
     }
 
     #[test]
+    fn a_torn_write_requires_an_erased_page_in_both_images() {
+        let mut trace = Vec::new();
+        let geometry = NandGeometry::new(4, 1).unwrap();
+        let mut ftl = Ftl::with_geometry(2, geometry).unwrap();
+        for (lba, byte) in [(0, 1), (1, 2), (0, 3)] {
+            ftl.write(lba, Box::new([byte; BLOCK_BYTES]), &mut trace)
+                .unwrap();
+        }
+        ftl.flush(&mut trace);
+        ftl.arm_torn_write(0, 19).unwrap();
+        let error = ftl
+            .write(0, Box::new([4; BLOCK_BYTES]), &mut trace)
+            .unwrap_err();
+        assert!(error.get_ref().unwrap().is::<TornProgram>());
+
+        let mut ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+        ftl.arm_torn_write(1, 19).unwrap();
+        ftl.write(0, Box::new([5; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        let error = ftl
+            .write(1, Box::new([6; BLOCK_BYTES]), &mut trace)
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "torn program needs a page erased in both images"
+        );
+
+        let reopened = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+        assert_eq!(*reopened.read(0, &mut trace).unwrap(), [3; BLOCK_BYTES]);
+        assert_eq!(*reopened.read(1, &mut trace).unwrap(), [2; BLOCK_BYTES]);
+    }
+
+    #[test]
     fn collection_copies_live_pages_before_erasing_and_recovery_keeps_them() {
         let mut trace = Vec::new();
         let mut ftl = Ftl::new();

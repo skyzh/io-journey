@@ -81,6 +81,11 @@ with that error and the queue returns cancellation errors for later accepted
 requests. The filesystem can acknowledge an append after a successful
 sync. Reopening after an error recovers the last flushed image.
 
+An explicit caller submits requests and retrieves their completions.
+Filesystem helpers drive their own requests. Switching between these
+drivers while requests are pending returns `WouldBlock`. Drain the queue
+with the current driver before switching.
+
 `NandGeometry::new(erase_blocks, pages_per_erase_block)` sets the physical
 layout. `Ftl::with_geometry(logical_blocks, geometry)` requires room for an
 erase block's worth of reserved pages and one extra physical page, beyond
@@ -88,6 +93,10 @@ the logical capacity. This ensures the collector can find a stale page at
 the write reserve. A cut can spend one of the reserved pages. The stale
 page in a candidate block leaves enough erased space elsewhere to move its
 live pages and replenish the reserve on reopen.
+
+The tear hook needs a page erased in both the live and durable images. If
+earlier unflushed writes leave no shared erased page, the hook reports a
+device error before programming any partial bytes.
 
 The course follow-ups cover metadata journaling and Linux integration through
 ublk, FUSE, and io_uring. The earlier NBD and `fio` pilot is available in Git

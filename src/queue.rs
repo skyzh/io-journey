@@ -43,8 +43,29 @@ fn format_span(verb: &str, lba: usize, blocks: usize) -> String {
 
 #[derive(Debug)]
 pub(crate) enum SubmitError {
-    Full(Operation),
+    Full(Submission),
     Rejected(io::Error),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Driver {
+    Explicit,
+    Filesystem,
+}
+
+#[derive(Debug)]
+pub(crate) struct Submission {
+    operation: Operation,
+    driver: Driver,
+}
+
+impl From<Operation> for Submission {
+    fn from(operation: Operation) -> Self {
+        Self {
+            operation,
+            driver: Driver::Explicit,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -55,7 +76,7 @@ pub(crate) enum Response {
 
 struct Request {
     id: RequestId,
-    operation: Operation,
+    submission: Submission,
 }
 
 pub(crate) struct Completion {
@@ -139,10 +160,11 @@ impl BlockQueue {
     /// the caller gets the request back and can retry after a completion.
     pub(crate) fn try_submit(
         &mut self,
-        operation: Operation,
+        submission: impl Into<Submission>,
         trace: &mut Trace,
     ) -> Result<RequestId, SubmitError> {
-        if let Some((lba, blocks)) = operation.span() {
+        let submission = submission.into();
+        if let Some((lba, blocks)) = submission.operation.span() {
             let end = lba.checked_add(blocks);
             if blocks == 0 || end.is_none_or(|end| end > self.logical_blocks()) {
                 return Err(SubmitError::Rejected(io::Error::new(
@@ -154,8 +176,18 @@ impl BlockQueue {
         if self.failed {
             return Err(SubmitError::Rejected(stopped_queue()));
         }
+        if self
+            .pending
+            .front()
+            .is_some_and(|request| request.submission.driver != submission.driver)
+        {
+            return Err(SubmitError::Rejected(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "complete the queued requests before switching drivers",
+            )));
+        }
         if self.pending.len() == self.depth.get() {
-            return Err(SubmitError::Full(operation));
+            return Err(SubmitError::Full(submission));
         }
         let id = self.next_id;
         self.next_id = id
@@ -163,18 +195,20 @@ impl BlockQueue {
             .ok_or_else(|| SubmitError::Rejected(io::Error::other("request IDs exhausted")))?;
         trace.push(format!(
             "queue  submit #{id} {} ({}/{})",
-            operation.label(),
+            submission.operation.label(),
             self.pending.len() + 1,
             self.depth
         ));
-        self.pending.push_back(Request { id, operation });
+        self.pending.push_back(Request { id, submission });
         Ok(id)
     }
 
     /// Advance the oldest request, including all of its children. Every
     /// accepted request has a completion, even if an earlier failure cancels it.
     pub(crate) fn complete_next(&mut self, trace: &mut Trace) -> Option<Completion> {
-        let Request { id, operation } = self.pending.pop_front()?;
+        let request = self.pending.pop_front()?;
+        let id = request.id;
+        let operation = request.submission.operation;
         let label = operation.label();
         if self.failed {
             trace.push(format!("queue  cancel #{id} {label}"));
@@ -217,15 +251,15 @@ impl BlockQueue {
         }
     }
 
-    // Filesystem calls drive their own requests. A client using try_submit
-    // directly receives completion IDs by driving complete_next instead.
-    fn submit_driven(
-        &mut self,
-        mut operation: Operation,
-        trace: &mut Trace,
-    ) -> io::Result<RequestId> {
+    // Filesystem calls can drive their own work after explicit callers have
+    // received all outstanding completions.
+    fn submit_driven(&mut self, operation: Operation, trace: &mut Trace) -> io::Result<RequestId> {
+        let mut submission = Submission {
+            operation,
+            driver: Driver::Filesystem,
+        };
         loop {
-            match self.try_submit(operation, trace) {
+            match self.try_submit(submission, trace) {
                 Ok(id) => return Ok(id),
                 Err(SubmitError::Rejected(error)) => return Err(error),
                 Err(SubmitError::Full(request)) => {
@@ -234,7 +268,7 @@ impl BlockQueue {
                         self.depth
                     ));
                     self.complete_next(trace).expect("full queue").result?;
-                    operation = request;
+                    submission = request;
                 }
             }
         }
@@ -345,6 +379,50 @@ mod tests {
             *queue.read(LOGICAL_BLOCKS - 1, &mut trace).unwrap(),
             [0; BLOCK_BYTES]
         );
+    }
+
+    fn check_explicit_read_survives_a_sync_flush(depth: NonZeroUsize) {
+        let mut trace = Vec::new();
+        let mut queue = BlockQueue::new(Ftl::new(), depth);
+        queue
+            .write(0, Box::new([0x42; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        queue.flush(&mut trace).unwrap();
+
+        let read_id = queue
+            .try_submit(Operation::Read { lba: 0, blocks: 1 }, &mut trace)
+            .unwrap();
+        let events = trace.len();
+        let next_id = queue.next_id;
+        let result = queue.flush(&mut trace);
+        assert_eq!(
+            result
+                .expect_err("filesystem flush must leave the explicit read pending")
+                .kind(),
+            io::ErrorKind::WouldBlock,
+        );
+        assert_eq!(trace.len(), events);
+        assert_eq!(queue.next_id, next_id);
+
+        let completion = queue.complete_next(&mut trace).unwrap();
+        assert_eq!(completion.id, read_id);
+        let Response::Read(blocks) = completion.result.unwrap() else {
+            panic!("expected the read payload");
+        };
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(*blocks[0], [0x42; BLOCK_BYTES]);
+        assert!(queue.complete_next(&mut trace).is_none());
+        queue.flush(&mut trace).unwrap();
+    }
+
+    #[test]
+    fn sync_flush_yields_before_waiting_behind_an_explicit_read() {
+        check_explicit_read_survives_a_sync_flush(NonZeroUsize::new(2).unwrap());
+    }
+
+    #[test]
+    fn sync_flush_yields_before_advancing_a_full_explicit_queue() {
+        check_explicit_read_survives_a_sync_flush(NonZeroUsize::MIN);
     }
 
     #[test]
