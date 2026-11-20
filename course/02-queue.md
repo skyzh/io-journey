@@ -62,8 +62,10 @@ orb -m ubuntu -u root unshare --mount --propagation private bash linux/ublk/queu
 The adapter builds your FTL, inner queue, and dispatch from this
 checkout. A missing learner module stops the build before a device
 is allocated. The two policies share that binary. Read the 4 KiB, depth-eight
-pairs before changing request size or depth. Check that fio, Linux block
-completion, and server byte counts agree. Compare requested depth with
+pairs before changing request size or depth. Check that Linux block issue
+bytes equal the bytes completed successfully by the server. The report
+accounts for any excess over fio. Linux completions feed the latency
+join. Compare requested depth with
 the achieved depth, then compare server queue wait, fio read p99, and
 throughput. Reads that advance in the server can still see higher
 end-to-end latency if work is batched differently. The guest trace
@@ -71,8 +73,9 @@ covers the device and the NAND counters cover the simulator.
 
 ### Recorded comparison
 
-The learner build's six fio cases reconciled fio, guest, and device
-bytes. In each 4 KiB pair below both arms issued 11,677,696 read bytes
+The learner build's six fio cases had equal Linux issue and successful
+server byte counts, with zero excess over fio. In each 4 KiB pair below
+both arms issued 11,677,696 read bytes
 and 5,099,520 write bytes. All four runs requested depth eight.
 
 | Pair and policy | Achieved depth | Reads advanced | Server read wait p99 | fio read p99 | Throughput |
