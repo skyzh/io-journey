@@ -105,6 +105,64 @@ fn cuts_at_every_barrier_keep_exactly_one_root_and_its_allocation() {
 }
 
 #[test]
+fn a_second_cut_during_replay_preserves_the_committed_update() {
+    for boundary in [1, 2] {
+        let (mut fs, _, new) = replacement();
+        fs.disk.flushes = 0;
+        fs.disk.cut_at = Some(3);
+        assert_eq!(
+            fs.sync_dir().unwrap_err().to_string(),
+            "power cut after flush"
+        );
+        let mut disk = fs.into_disk().cut();
+        disk.cut_at = Some(boundary);
+        assert_eq!(
+            recover_metadata(&mut disk).err().unwrap().to_string(),
+            "power cut after flush"
+        );
+        let mut recovered = JournalFs::open(disk.cut()).unwrap();
+        assert_eq!(recovered.entries().unwrap().count(), 1);
+        assert_eq!(recovered.lookup(b"events.log").unwrap().ino, new);
+        assert_eq!(
+            recovered.read(new, 0, BLOCK_BYTES + 2).unwrap(),
+            vec![42; BLOCK_BYTES + 1]
+        );
+        assert_eq!(recovered.free_blocks(), 59);
+        let generation = recovered.generation();
+        let again = JournalFs::open(recovered.into_disk().cut()).unwrap();
+        assert_eq!(again.generation(), generation);
+        assert_eq!(again.disk.flushes, 0, "clean reopen should need no replay");
+    }
+}
+
+#[test]
+fn full_device_preserves_a_partial_block_and_reclaims_an_aligned_shrink() {
+    let mut fs = JournalFs::format(RamDisk::new(8)).unwrap();
+    let ino = fs.create(b"full", 0o600).unwrap();
+    let data = vec![0x72; 5 * BLOCK_BYTES];
+    fs.write(ino, 0, &data).unwrap();
+    fs.sync_dir().unwrap();
+    assert_eq!(fs.free_blocks(), 0);
+
+    let prefix = 4 * BLOCK_BYTES;
+    let error = fs.truncate(ino, (prefix + 3) as u64).unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::StorageFull);
+    assert_eq!(fs.stat(ino).unwrap().len, data.len());
+    assert_eq!(fs.read(ino, 0, data.len()).unwrap(), data);
+    assert_eq!(fs.free_blocks(), 0);
+    let mut fs = JournalFs::open(fs.into_disk().cut()).unwrap();
+    assert_eq!(fs.read(ino, 0, data.len()).unwrap(), data);
+
+    fs.truncate(ino, prefix as u64).unwrap();
+    assert_eq!(fs.free_blocks(), 0, "the old durable extent is still live");
+    fs.sync_file(ino).unwrap();
+    let mut recovered = JournalFs::open(fs.into_disk().cut()).unwrap();
+    assert_eq!(recovered.stat(ino).unwrap().blocks, 4);
+    assert_eq!(recovered.free_blocks(), 1);
+    assert_eq!(recovered.read(ino, 0, data.len()).unwrap(), data[..prefix]);
+}
+
+#[test]
 fn corruption_of_committed_redo_or_marker_fails_reopen() {
     for lba in [REDO, COMMIT] {
         let (mut fs, _, _) = replacement();
@@ -135,10 +193,38 @@ fn the_marker_rejects_a_different_valid_redo_at_the_same_generation() {
     redo.files.get_mut(b"events.log".as_slice()).unwrap().mode ^= 0o100;
     disk.write_block(REDO, redo.encode()).unwrap();
     disk.flush().unwrap();
-    let error = JournalFs::open(disk.cut())
+    assert_replay_rejected(disk.cut());
+}
+
+#[test]
+fn the_marker_rejects_a_valid_redo_from_another_generation() {
+    let (mut fs, _, _) = replacement();
+    fs.disk.flushes = 0;
+    fs.disk.cut_at = Some(3);
+    assert!(fs.sync_dir().is_err());
+    let mut disk = fs.into_disk().cut();
+    let redo = disk.read_block(REDO).unwrap();
+    let metadata = Metadata::decode(&redo, disk.block_count()).unwrap();
+    let wrong_generation = metadata.generation.checked_add(1).unwrap();
+    disk.write_block(
+        COMMIT,
+        commit_record(wrong_generation, frame_checksum(&redo)),
+    )
+    .unwrap();
+    disk.flush().unwrap();
+    assert_replay_rejected(disk.cut());
+}
+
+fn assert_replay_rejected(mut disk: RamDisk) {
+    let home = disk.read_block(HOME).unwrap();
+    let marker = disk.read_block(COMMIT).unwrap();
+    let error = recover_metadata(&mut disk)
         .err()
-        .expect("marker bound to original redo");
-    assert_eq!(error.to_string(), "committed redo checksum mismatch");
+        .expect("marker must bind the original redo and generation");
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(disk.flushes, 0, "an invalid redo must not reach replay");
+    assert!(disk.read_block(HOME).unwrap() == home, "home block changed");
+    assert!(disk.read_block(COMMIT).unwrap() == marker, "marker changed");
 }
 
 #[test]
