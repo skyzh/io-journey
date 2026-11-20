@@ -1,4 +1,6 @@
 pub mod dispatch;
+#[cfg(feature = "indexed-ftl")]
+mod free_space;
 pub mod ftl;
 pub mod journal_fs;
 pub mod nand;
