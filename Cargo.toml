@@ -7,5 +7,6 @@ publish = false
 [features]
 learner = []
 learner-queue = ["learner"]
+learner-journal = ["learner-queue"]
 
 [dependencies]

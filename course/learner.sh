@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|admit|order|flush|dispatch}.' >&2
+    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|admit|order|flush|dispatch|commit|replay}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
@@ -27,6 +27,14 @@ case "$1" in
     dispatch)
         features=learner-queue
         test_args=(dispatch::tests::)
+        ;;
+    commit)
+        features=learner-journal
+        test_args=(journal_fs::tests::file_sync_keeps_the_durable_name_and_directory_sync_publishes_rename -- --exact)
+        ;;
+    replay)
+        features=learner-journal
+        test_args=(journal_fs::tests::)
         ;;
     *) usage ;;
 esac
