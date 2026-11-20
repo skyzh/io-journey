@@ -196,33 +196,33 @@ pub fn run_queue(
         .submit_fetch_commands_unified(BufDescList::Slices(Some(&buffers)))?;
     let mut batch = Vec::with_capacity(usize::from(QUEUE_DEPTH));
     let outcome = loop {
-        let result = dispatch_batch(
-            &mut batch,
-            |pending| {
-                // This target submits only ublk fetch and commit commands. The
-                // raw batch also includes aborts, which carry no new request.
-                queue.flush_and_wake_io_tasks(
-                    |user_data, cqe, _| {
-                        accept_command(pending, cqe.result(), || {
-                            let tag = UblkIOCtx::user_data_to_tag(user_data) as u16;
-                            assert!(queue.owns_tag(tag));
-                            let iod = queue.get_iod(tag);
-                            Arrival {
-                                tag,
-                                op: iod.op_flags & 0xff,
-                                sector: iod.start_sector,
-                                sectors: iod.nr_sectors,
-                                at: Instant::now(),
-                            }
-                        });
+        // This target submits only ublk fetch and commit commands. The raw
+        // callback also sees aborts that the library's IO callback filters.
+        let result = queue.flush_and_wake_io_tasks(
+            |user_data, cqe, is_last| {
+                visit_command(
+                    &mut batch,
+                    cqe.result(),
+                    is_last,
+                    || {
+                        let tag = UblkIOCtx::user_data_to_tag(user_data) as u16;
+                        assert!(queue.owns_tag(tag));
+                        let iod = queue.get_iod(tag);
+                        Arrival {
+                            tag,
+                            op: iod.op_flags & 0xff,
+                            sector: iod.start_sector,
+                            sectors: iod.nr_sectors,
+                            at: Instant::now(),
+                        }
                     },
-                    1,
-                )
+                    |pending| service_batch(&queue, &mut buffers, state, policy, pending),
+                );
             },
-            |pending| service_batch(&queue, &mut buffers, state, policy, pending),
+            1,
         );
         match result {
-            Ok(()) => {}
+            Ok(_) => {}
             Err(UblkError::QueueIsDown) => break Ok(()),
             Err(error) => break Err(error),
         }
@@ -233,19 +233,20 @@ pub fn run_queue(
     outcome
 }
 
-fn dispatch_batch(
+fn visit_command(
     batch: &mut Vec<Arrival>,
-    receive: impl FnOnce(&mut Vec<Arrival>) -> Result<i32, UblkError>,
+    result: i32,
+    is_last: bool,
+    describe: impl FnOnce() -> Arrival,
     dispatch: impl FnOnce(&mut Vec<Arrival>),
-) -> Result<(), UblkError> {
-    receive(batch)?;
-    dispatch(batch);
-    Ok(())
-}
-
-fn accept_command(batch: &mut Vec<Arrival>, result: i32, describe: impl FnOnce() -> Arrival) {
+) {
     if result == sys::UBLK_IO_RES_OK as i32 {
         batch.push(describe());
+    }
+    // libublk marks a batch containing an abort as stopping after the last
+    // callback. Commits queued after that update would be dropped.
+    if is_last {
+        dispatch(batch);
     }
 }
 
@@ -327,28 +328,42 @@ mod tests {
     }
 
     #[test]
-    fn a_skipped_final_completion_leaves_no_accepted_tag_waiting() {
+    fn a_skipped_final_completion_queues_the_accepted_tag_before_stop() {
         let mut batch = Vec::new();
-        let mut serviced = Vec::new();
-        dispatch_batch(
-            &mut batch,
-            |pending| {
-                accept_command(pending, sys::UBLK_IO_RES_OK as i32, || Arrival {
-                    tag: 3,
-                    op: sys::UBLK_IO_OP_READ,
-                    sector: 0,
-                    sectors: 8,
-                    at: Instant::now(),
-                });
-                accept_command(pending, sys::UBLK_IO_RES_ABORT, || {
-                    panic!("aborted tag does not describe a request")
-                });
-                Ok(2)
-            },
-            |pending| serviced.extend(pending.drain(..).map(|request| request.tag)),
-        )
-        .unwrap();
-        assert_eq!(serviced, [3]);
+        let mut queued_commits = Vec::new();
+        let mut stopping = false;
+        for (result, is_last) in [
+            (sys::UBLK_IO_RES_OK as i32, false),
+            (sys::UBLK_IO_RES_ABORT, true),
+        ] {
+            visit_command(
+                &mut batch,
+                result,
+                is_last,
+                || {
+                    assert_eq!(result, sys::UBLK_IO_RES_OK as i32);
+                    Arrival {
+                        tag: 3,
+                        op: sys::UBLK_IO_OP_READ,
+                        sector: 0,
+                        sectors: 8,
+                        at: Instant::now(),
+                    }
+                },
+                |pending| {
+                    assert!(is_last);
+                    if !stopping {
+                        queued_commits.extend(pending.drain(..).map(|request| request.tag));
+                    }
+                },
+            );
+            if result == sys::UBLK_IO_RES_ABORT && is_last {
+                // Match libublk: it applies the abort after visiting the entries.
+                stopping = true;
+            }
+        }
+        assert!(stopping);
+        assert_eq!(queued_commits, [3]);
         assert!(batch.is_empty());
     }
 }
