@@ -4,6 +4,11 @@ use std::ops::Range;
 #[cfg(feature = "indexed-ftl")]
 use crate::free_space::FreePages;
 
+#[cfg_attr(feature = "learner-sharing", path = "../course/learner/pages.rs")]
+#[cfg_attr(not(feature = "learner-sharing"), path = "nand/pages.rs")]
+mod storage;
+use storage::StoredPage;
+
 pub const BLOCK_BYTES: usize = 4096;
 pub(crate) const PAGES_PER_ERASE_BLOCK: usize = 4;
 pub(crate) const ERASE_BLOCKS: usize = 4;
@@ -52,7 +57,7 @@ impl NandGeometry {
 #[derive(Clone)]
 pub(crate) struct Nand {
     geometry: NandGeometry,
-    pages: Vec<Option<Block>>,
+    pages: Vec<Option<StoredPage>>,
     #[cfg(feature = "indexed-ftl")]
     free: FreePages,
 }
@@ -77,7 +82,7 @@ impl Nand {
     }
 
     pub(crate) fn read(&self, page: usize) -> Option<&Block> {
-        self.pages.get(page)?.as_ref()
+        self.pages.get(page)?.as_ref().map(storage::borrow)
     }
 
     #[cfg(not(feature = "indexed-ftl"))]
@@ -125,7 +130,7 @@ impl Nand {
                 "NAND page must be erased before programming",
             ));
         }
-        *slot = Some(data);
+        *slot = Some(storage::keep(data));
         #[cfg(feature = "indexed-ftl")]
         self.free
             .record_program(page, page / self.geometry.pages_per_erase_block());

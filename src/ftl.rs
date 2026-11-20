@@ -475,6 +475,77 @@ mod tests {
     }
 
     #[test]
+    fn exported_images_preserve_bytes_through_collection_and_tear() {
+        let mut trace = Vec::new();
+        let mut ftl = Ftl::new();
+        for lba in 0..8 {
+            ftl.write(lba, Box::new([lba as u8; BLOCK_BYTES]), &mut trace)
+                .unwrap();
+        }
+        for value in 10..=13 {
+            ftl.write(0, Box::new([value; BLOCK_BYTES]), &mut trace)
+                .unwrap();
+        }
+        ftl.flush(&mut trace);
+        let first = ftl.checkpoint();
+        let old = first.mapped_page(0).unwrap();
+        ftl.write(1, Box::new([42; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        let relocated = ftl.live.mapped_page(0).unwrap();
+        assert!(ftl.live.nand.read(old).is_none());
+        assert!(first.physical_page(relocated).is_none());
+        assert_eq!(**first.physical_page(old).unwrap(), [13; BLOCK_BYTES]);
+
+        ftl.flush(&mut trace);
+        let last = ftl.checkpoint();
+        ftl.arm_torn_write(1, 19).unwrap();
+        let error = ftl
+            .write(1, Box::new([0x73; BLOCK_BYTES]), &mut trace)
+            .unwrap_err();
+        let tear = error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<TornProgram>()
+            .unwrap();
+        let crash = ftl.power_cut();
+        assert!(last.physical_page(tear.page).is_none());
+        assert_eq!(crash.mapped_page(1), last.mapped_page(1));
+        let partial = crash.physical_page(tear.page).unwrap();
+        assert_eq!(partial[..19], [0x73; 19]);
+        assert!(partial[19..].iter().all(|&byte| byte == ERASED_BYTE));
+        let saved = Ftl::open(first, &mut trace).unwrap();
+        assert_eq!(*saved.read(1, &mut trace).unwrap(), [1; BLOCK_BYTES]);
+        let recovered = Ftl::open(crash, &mut trace).unwrap();
+        for (lba, byte) in [13, 42, 2, 3, 4, 5, 6, 7].into_iter().enumerate() {
+            assert_eq!(
+                *recovered.read(lba, &mut trace).unwrap(),
+                [byte; BLOCK_BYTES]
+            );
+        }
+    }
+
+    #[cfg(feature = "shared-pages")]
+    #[test]
+    fn clean_exports_share_existing_page_payloads() {
+        let mut trace = Vec::new();
+        let mut ftl = Ftl::new();
+        ftl.write(0, Box::new([0x12; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        ftl.flush(&mut trace);
+        let before = ftl.checkpoint();
+        ftl.flush(&mut trace);
+        let after = ftl.checkpoint();
+        let page = before.mapped_page(0).unwrap();
+        assert!(
+            std::ptr::eq(
+                before.physical_page(page).unwrap(),
+                after.physical_page(page).unwrap()
+            ),
+            "clean exports should share the same stored payload"
+        );
+    }
+
+    #[test]
     fn repeated_torn_programs_leave_room_for_a_new_durable_write() {
         let mut trace = Vec::new();
         let mut ftl = Ftl::new();
