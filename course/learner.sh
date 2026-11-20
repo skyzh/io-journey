@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|index|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
@@ -17,6 +17,10 @@ case "$1" in
     index)
         features=learner-index
         test_args=(ftl::tests::index_matches_physical_pages_and_mappings_through_recovery -- --exact)
+        ;;
+    sharing)
+        features=learner-sharing
+        test_args=()
         ;;
     admit)
         features=learner-queue
