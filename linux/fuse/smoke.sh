@@ -2,6 +2,7 @@
 set -euo pipefail
 
 fuse_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+source "$fuse_dir/../mount-state.sh"
 backend=${1:-image}
 
 if [[ $# -gt 1 || ( "$backend" != image && "$backend" != ublk ) ]]; then
@@ -9,11 +10,12 @@ if [[ $# -gt 1 || ( "$backend" != image && "$backend" != ublk ) ]]; then
     exit 1
 fi
 if [[ $(id -u) != 0 || ! -c /dev/fuse ||
-      $(readlink /proc/self/ns/mnt) == "$(readlink /proc/1/ns/mnt)" ||
       $(findmnt -n -o FSTYPE -T /dev/shm) != tmpfs ]]; then
     printf 'Use guest root with /dev/fuse, /dev/shm on tmpfs, and a private mount namespace.\n' >&2
     exit 1
 fi
+require_private_mount_namespace
+require_private_mount_parent /dev/shm
 
 build_dir=$(mktemp -d /dev/shm/io-journey-fuse-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT

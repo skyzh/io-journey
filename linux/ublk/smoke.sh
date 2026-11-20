@@ -2,6 +2,7 @@
 set -euo pipefail
 
 adapter_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+source "$adapter_dir/../mount-state.sh"
 
 fail() {
     printf '%s\n' "$*" >&2
@@ -9,11 +10,11 @@ fail() {
 }
 
 [[ $(id -u) == 0 && -c /dev/ublk-control ]] || fail 'Run as root in a guest with ublk.'
-[[ $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
-    fail 'Run in a private mount namespace using unshare --mount --propagation private.'
+require_private_mount_namespace
 for ram_dir in /dev/shm /run; do
     [[ $(findmnt -n -o FSTYPE -T "$ram_dir") == tmpfs ]] || fail "$ram_dir must be tmpfs."
 done
+require_private_mount_parent /dev/shm
 
 mode=ext4
 mount_filesystem=ext4
@@ -69,7 +70,6 @@ device=
 trace_instance=
 mkdir "$mount_dir"
 source "$adapter_dir/build-env.sh"
-source "$adapter_dir/../mount-state.sh"
 source "$adapter_dir/cleanup.sh"
 if [[ "$mount_filesystem" == fuse ]]; then
     source "$adapter_dir/../fuse/mount.sh"

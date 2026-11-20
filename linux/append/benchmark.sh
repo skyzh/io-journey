@@ -4,17 +4,19 @@ set -euo pipefail
 case_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 ublk_dir="$case_dir/../ublk"
 source "$ublk_dir/build-env.sh"
+source "$ublk_dir/../mount-state.sh"
 
 fail() {
     printf '%s\n' "$*" >&2
     exit 1
 }
 
-[[ $# == 0 && $(id -u) == 0 && -c /dev/fuse && -c /dev/ublk-control &&
-   $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
+[[ $# == 0 && $(id -u) == 0 && -c /dev/fuse && -c /dev/ublk-control ]] ||
     fail 'Run in a private guest mount namespace with FUSE and ublk.'
 [[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs && $(findmnt -n -o FSTYPE -T /run) == tmpfs ]] ||
     fail 'Keep /dev/shm and /run on tmpfs.'
+require_private_mount_namespace
+require_private_mount_parent /dev/shm
 
 build_dir=$(mktemp -d /dev/shm/io-journey-append-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT
