@@ -1,0 +1,12 @@
+--- a/src/queue.rs
++++ b/src/queue.rs
+@@ -217,7 +217,8 @@
+         trace: &mut Trace,
+     ) -> io::Result<Option<Completion>> {
+         self.require_driver(driver)?;
+-        let Some(request) = self.pending.pop_front() else {
++        // TODO: Take the request that should run next under the flush contract.
++        let Some(request) = self.pending.pop_back() else {
+             return Ok(None);
+         };
+         let id = request.id;
