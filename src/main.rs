@@ -7,7 +7,7 @@ mod queue;
 use std::io;
 use std::num::NonZeroUsize;
 
-use filesystem::FileSystem;
+use filesystem::{FileSystem, FIRST_DATA_LBA};
 use ftl::{Ftl, TornProgram};
 use nand::ERASED_BYTE;
 use queue::BlockQueue;
@@ -63,7 +63,7 @@ fn demo(trace: &mut Trace) -> io::Result<()> {
         .map(|record| app::HEADER_BYTES + record.len())
         .sum();
     let tear_after = committed_bytes + app::HEADER_BYTES + 2;
-    queue.tear_next_program(tear_after)?;
+    queue.arm_torn_write(FIRST_DATA_LBA, tear_after)?;
     let flush_error = {
         let mut fs = FileSystem::open(&mut queue, trace)?;
         app::append(&mut fs, TORN, trace)?;

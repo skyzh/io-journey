@@ -48,9 +48,9 @@ demo   verified the acknowledged prefix after both cuts
 - The filesystem has one root entry, `/events.log`. Logical block 0 stores
   its length. Seven data blocks store the contents. An append queues data
   writes before the length update.
-- The queue accepts up to two 4 KiB requests. At capacity it completes the
-  oldest request before accepting another. Request IDs connect submissions and
-  completions. A flush runs after the earlier writes.
+- The demo queue accepts up to two requests. The filesystem advances the
+  oldest request when the queue is full. Request IDs connect submissions
+  and completions. A flush runs after the earlier writes.
 - The FTL writes a new physical page on each overwrite and updates the
   logical mapping. Collection moves live pages before erasing an entire
   block. The NAND model has four erase blocks with four pages each.
@@ -70,6 +70,24 @@ an erase block that contains stale pages and erases that block. Both the
 live and durable RAM images start from the reclaimed state. A regression
 test cuts four consecutive overwrites, checks all committed blocks on each
 reopen, then writes and recovers a new value.
+
+## Block requests and geometry
+
+The device validates a contiguous read or write range before enqueueing any
+work. A range occupies one queue slot. When it reaches the front, its
+4 KiB blocks run in order and share one completion ID. A flush waits for
+all blocks in earlier requests. If one block fails, the range completes
+with that error and the queue returns cancellation errors for later accepted
+requests. The filesystem can acknowledge an append after a successful
+sync. Reopening after an error recovers the last flushed image.
+
+`NandGeometry::new(erase_blocks, pages_per_erase_block)` sets the physical
+layout. `Ftl::with_geometry(logical_blocks, geometry)` requires room for an
+erase block's worth of reserved pages and one extra physical page, beyond
+the logical capacity. This ensures the collector can find a stale page at
+the write reserve. A cut can spend one of the reserved pages. The stale
+page in a candidate block leaves enough erased space elsewhere to move its
+live pages and replenish the reserve on reopen.
 
 The course follow-ups cover metadata journaling and Linux integration through
 ublk, FUSE, and io_uring. The earlier NBD and `fio` pilot is available in Git

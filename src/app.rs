@@ -1,13 +1,13 @@
 use std::io;
 
-use crate::filesystem::{FileSystem, FILE_CAPACITY};
+use crate::filesystem::FileSystem;
 use crate::Trace;
 
 // Each record starts with a little-endian payload length and CRC-32.
 pub(crate) const HEADER_BYTES: usize = 8;
 
 pub(crate) fn append(fs: &mut FileSystem<'_>, payload: &[u8], trace: &mut Trace) -> io::Result<()> {
-    if payload.len() > FILE_CAPACITY - HEADER_BYTES {
+    if payload.len() > fs.capacity() - HEADER_BYTES {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "log record exceeds file capacity",

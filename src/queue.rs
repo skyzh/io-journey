@@ -2,41 +2,72 @@ use std::collections::VecDeque;
 use std::io;
 use std::num::NonZeroUsize;
 
-use crate::ftl::{check_lba, FlashImage, Ftl};
+use crate::ftl::{FlashImage, Ftl};
 use crate::nand::Block;
 use crate::Trace;
 
-enum Operation {
-    Read(usize),
-    Write(usize, Block),
+pub(crate) type RequestId = u64;
+
+#[derive(Debug)]
+pub(crate) enum Operation {
+    Read { lba: usize, blocks: usize },
+    Write { lba: usize, data: Vec<Block> },
     Flush,
 }
 
 impl Operation {
+    fn span(&self) -> Option<(usize, usize)> {
+        match self {
+            Self::Read { lba, blocks } => Some((*lba, *blocks)),
+            Self::Write { lba, data } => Some((*lba, data.len())),
+            Self::Flush => None,
+        }
+    }
+
     fn label(&self) -> String {
         match self {
-            Self::Read(lba) => format!("read LBA {lba}"),
-            Self::Write(lba, _) => format!("write LBA {lba}"),
+            Self::Read { lba, blocks } => format_span("read", *lba, *blocks),
+            Self::Write { lba, data } => format_span("write", *lba, data.len()),
             Self::Flush => "flush".into(),
         }
     }
 }
 
+fn format_span(verb: &str, lba: usize, blocks: usize) -> String {
+    if blocks == 1 {
+        format!("{verb} LBA {lba}")
+    } else {
+        format!("{verb} {blocks} blocks from LBA {lba}")
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum SubmitError {
+    Full(Operation),
+    Rejected(io::Error),
+}
+
+#[derive(Debug)]
+pub(crate) enum Response {
+    Read(Vec<Block>),
+    Done,
+}
+
 struct Request {
-    id: u64,
+    id: RequestId,
     operation: Operation,
 }
 
-struct Completion {
-    id: u64,
-    data: Option<Block>,
+pub(crate) struct Completion {
+    pub(crate) id: RequestId,
+    pub(crate) result: io::Result<Response>,
 }
 
 pub(crate) struct BlockQueue {
     ftl: Ftl,
     pending: VecDeque<Request>,
     depth: NonZeroUsize,
-    next_id: u64,
+    next_id: RequestId,
     failed: bool,
 }
 
@@ -51,21 +82,47 @@ impl BlockQueue {
         }
     }
 
+    pub(crate) fn logical_blocks(&self) -> usize {
+        self.ftl.logical_blocks()
+    }
+
     pub(crate) fn read(&mut self, lba: usize, trace: &mut Trace) -> io::Result<Block> {
-        check_lba(lba)?;
-        let id = self.submit(Operation::Read(lba), trace)?;
-        Ok(self.wait(id, trace)?.data.expect("read completion"))
+        Ok(self
+            .read_range(lba, 1, trace)?
+            .pop()
+            .expect("one read block"))
+    }
+
+    pub(crate) fn read_range(
+        &mut self,
+        lba: usize,
+        blocks: usize,
+        trace: &mut Trace,
+    ) -> io::Result<Vec<Block>> {
+        let id = self.submit_driven(Operation::Read { lba, blocks }, trace)?;
+        match self.wait(id, trace)? {
+            Response::Read(data) => Ok(data),
+            Response::Done => unreachable!("read completion"),
+        }
     }
 
     /// Accept a write. The device executes it when the queue advances.
     pub(crate) fn write(&mut self, lba: usize, data: Block, trace: &mut Trace) -> io::Result<()> {
-        check_lba(lba)?;
-        self.submit(Operation::Write(lba, data), trace)?;
+        self.write_range(lba, vec![data], trace)
+    }
+
+    pub(crate) fn write_range(
+        &mut self,
+        lba: usize,
+        data: Vec<Block>,
+        trace: &mut Trace,
+    ) -> io::Result<()> {
+        self.submit_driven(Operation::Write { lba, data }, trace)?;
         Ok(())
     }
 
     pub(crate) fn flush(&mut self, trace: &mut Trace) -> io::Result<()> {
-        let id = self.submit(Operation::Flush, trace)?;
+        let id = self.submit_driven(Operation::Flush, trace)?;
         self.wait(id, trace)?;
         Ok(())
     }
@@ -74,124 +131,273 @@ impl BlockQueue {
         self.ftl.power_cut()
     }
 
-    pub(crate) fn tear_next_program(&mut self, bytes: usize) -> io::Result<()> {
-        self.ftl.tear_next_program(bytes)
+    pub(crate) fn arm_torn_write(&mut self, lba: usize, prefix_bytes: usize) -> io::Result<()> {
+        self.ftl.arm_torn_write(lba, prefix_bytes)
     }
 
-    fn submit(&mut self, operation: Operation, trace: &mut Trace) -> io::Result<u64> {
+    /// Accept one request without executing any queued work. On backpressure
+    /// the caller gets the request back and can retry after a completion.
+    pub(crate) fn try_submit(
+        &mut self,
+        operation: Operation,
+        trace: &mut Trace,
+    ) -> Result<RequestId, SubmitError> {
+        if let Some((lba, blocks)) = operation.span() {
+            let end = lba.checked_add(blocks);
+            if blocks == 0 || end.is_none_or(|end| end > self.logical_blocks()) {
+                return Err(SubmitError::Rejected(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid range of {blocks} blocks from LBA {lba}"),
+                )));
+            }
+        }
         if self.failed {
-            return Err(io::Error::other(
-                "queue stopped after a device failure. Reopen the image",
-            ));
+            return Err(SubmitError::Rejected(stopped_queue()));
+        }
+        if self.pending.len() == self.depth.get() {
+            return Err(SubmitError::Full(operation));
         }
         let id = self.next_id;
-        let successor = id
+        self.next_id = id
             .checked_add(1)
-            .ok_or_else(|| io::Error::other("request IDs exhausted"))?;
-        if self.pending.len() == self.depth.get() {
-            trace.push(format!(
-                "queue  backpressure at depth {}. Completing the oldest request",
-                self.depth
-            ));
-            self.complete_next(trace)?;
-        }
+            .ok_or_else(|| SubmitError::Rejected(io::Error::other("request IDs exhausted")))?;
         trace.push(format!(
             "queue  submit #{id} {} ({}/{})",
             operation.label(),
             self.pending.len() + 1,
             self.depth
         ));
-        self.next_id = successor;
         self.pending.push_back(Request { id, operation });
         Ok(id)
     }
 
-    fn wait(&mut self, id: u64, trace: &mut Trace) -> io::Result<Completion> {
-        while let Some(completion) = self.complete_next(trace)? {
+    /// Advance the oldest request, including all of its children. Every
+    /// accepted request has a completion, even if an earlier failure cancels it.
+    pub(crate) fn complete_next(&mut self, trace: &mut Trace) -> Option<Completion> {
+        let Request { id, operation } = self.pending.pop_front()?;
+        let label = operation.label();
+        if self.failed {
+            trace.push(format!("queue  cancel #{id} {label}"));
+            return Some(Completion {
+                id,
+                result: Err(stopped_queue()),
+            });
+        }
+
+        trace.push(format!("queue  dispatch #{id} {label}"));
+        if let Some((_, blocks)) = operation.span().filter(|&(_, blocks)| blocks > 1) {
+            trace.push(format!("queue  split #{id} into {blocks} 4 KiB blocks"));
+        }
+        let result = self.execute(operation, trace);
+        if result.is_ok() {
+            trace.push(format!("queue  complete #{id} {label}"));
+        } else {
+            self.failed = true;
+            trace.push(format!("queue  failed #{id} {label}"));
+        }
+        Some(Completion { id, result })
+    }
+
+    fn execute(&mut self, operation: Operation, trace: &mut Trace) -> io::Result<Response> {
+        match operation {
+            Operation::Read { lba, blocks } => (lba..lba + blocks)
+                .map(|lba| self.ftl.read(lba, trace))
+                .collect::<io::Result<Vec<_>>>()
+                .map(Response::Read),
+            Operation::Write { lba, data } => {
+                for (offset, block) in data.into_iter().enumerate() {
+                    self.ftl.write(lba + offset, block, trace)?;
+                }
+                Ok(Response::Done)
+            }
+            Operation::Flush => {
+                self.ftl.flush(trace);
+                Ok(Response::Done)
+            }
+        }
+    }
+
+    // Filesystem calls drive their own requests. A client using try_submit
+    // directly receives completion IDs by driving complete_next instead.
+    fn submit_driven(
+        &mut self,
+        mut operation: Operation,
+        trace: &mut Trace,
+    ) -> io::Result<RequestId> {
+        loop {
+            match self.try_submit(operation, trace) {
+                Ok(id) => return Ok(id),
+                Err(SubmitError::Rejected(error)) => return Err(error),
+                Err(SubmitError::Full(request)) => {
+                    trace.push(format!(
+                        "queue  backpressure at depth {}. Completing the oldest request",
+                        self.depth
+                    ));
+                    self.complete_next(trace).expect("full queue").result?;
+                    operation = request;
+                }
+            }
+        }
+    }
+
+    fn wait(&mut self, id: RequestId, trace: &mut Trace) -> io::Result<Response> {
+        while let Some(completion) = self.complete_next(trace) {
+            let value = completion.result?;
             if completion.id == id {
-                return Ok(completion);
+                return Ok(value);
             }
         }
         Err(io::Error::other("queued request has no completion"))
     }
+}
 
-    fn complete_next(&mut self, trace: &mut Trace) -> io::Result<Option<Completion>> {
-        let Some(Request { id, operation }) = self.pending.pop_front() else {
-            return Ok(None);
-        };
-        let label = operation.label();
-        trace.push(format!("queue  dispatch #{id} {label}"));
-        let outcome = match operation {
-            Operation::Read(lba) => self.ftl.read(lba, trace).map(Some),
-            Operation::Write(lba, data) => self.ftl.write(lba, data, trace).map(|()| None),
-            Operation::Flush => {
-                self.ftl.flush(trace);
-                Ok(None)
-            }
-        };
-        match outcome {
-            Ok(data) => {
-                trace.push(format!("queue  complete #{id} {label}"));
-                Ok(Some(Completion { id, data }))
-            }
-            Err(error) => {
-                let dropped = self.pending.len();
-                self.pending.clear();
-                self.failed = true;
-                trace.push(format!(
-                    "queue  failed #{id} {label} (discarded {dropped} queued requests)"
-                ));
-                Err(error)
-            }
-        }
-    }
+fn stopped_queue() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::BrokenPipe,
+        "queue stopped after a device failure. Reopen the image",
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ftl::LOGICAL_BLOCKS;
+    use crate::ftl::{TornProgram, LOGICAL_BLOCKS};
     use crate::nand::BLOCK_BYTES;
 
-    #[test]
-    fn full_queue_makes_room_and_flush_excludes_a_later_write() {
-        let mut trace = Vec::new();
-        let mut queue = BlockQueue::new(Ftl::new(), NonZeroUsize::new(2).unwrap());
-        queue
-            .write(0, Box::new([1; BLOCK_BYTES]), &mut trace)
-            .unwrap();
-        let flush = queue.submit(Operation::Flush, &mut trace).unwrap();
-        queue
-            .write(0, Box::new([2; BLOCK_BYTES]), &mut trace)
-            .unwrap();
-        assert!(trace
-            .iter()
-            .any(|event| event.contains("backpressure at depth 2")));
-        assert_eq!(queue.pending.len(), 2);
-        queue.wait(flush, &mut trace).unwrap();
-        assert_eq!(queue.pending.len(), 1);
-        assert_eq!(*queue.read(0, &mut trace).unwrap(), [2; BLOCK_BYTES]);
-
-        let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
-        let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
-        assert_eq!(*reopened.read(0, &mut trace).unwrap(), [1; BLOCK_BYTES]);
+    fn write_request(lba: usize, values: &[u8]) -> Operation {
+        Operation::Write {
+            lba,
+            data: values
+                .iter()
+                .map(|&byte| Box::new([byte; BLOCK_BYTES]))
+                .collect(),
+        }
     }
 
     #[test]
-    fn invalid_write_leaves_a_full_queue_untouched() {
+    fn a_bounded_queue_flushes_every_child_and_excludes_the_later_range() {
+        let mut trace = Vec::new();
+        let mut queue = BlockQueue::new(Ftl::new(), NonZeroUsize::new(2).unwrap());
+        let earlier = queue
+            .try_submit(write_request(0, &[1, 2, 3]), &mut trace)
+            .unwrap();
+        let flush = queue.try_submit(Operation::Flush, &mut trace).unwrap();
+
+        let Err(SubmitError::Full(later)) = queue.try_submit(write_request(0, &[4, 5]), &mut trace)
+        else {
+            panic!("a third pending request must receive backpressure");
+        };
+        assert_eq!(queue.pending.len(), 2);
+        let completion = queue.complete_next(&mut trace).unwrap();
+        assert_eq!(completion.id, earlier);
+        assert!(matches!(completion.result.unwrap(), Response::Done));
+        let later = queue.try_submit(later, &mut trace).unwrap();
+        assert_eq!(queue.pending.len(), 2);
+        for id in [flush, later] {
+            let completion = queue.complete_next(&mut trace).unwrap();
+            assert_eq!(completion.id, id);
+            assert!(matches!(completion.result.unwrap(), Response::Done));
+        }
+        let blocks = queue.read_range(0, 3, &mut trace).unwrap();
+        for (block, byte) in blocks.iter().zip([4, 5, 3]) {
+            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        }
+
+        let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
+        let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
+        let blocks = reopened.read_range(0, 3, &mut trace).unwrap();
+        assert_eq!(blocks.len(), 3);
+        for (block, byte) in blocks.iter().zip([1, 2, 3]) {
+            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        }
+        assert!(trace.iter().any(|line| line.contains("split #1 into 3")));
+    }
+
+    #[test]
+    fn invalid_ranges_leave_a_full_queue_and_its_id_counter_untouched() {
         let mut trace = Vec::new();
         let mut queue = BlockQueue::new(Ftl::new(), NonZeroUsize::MIN);
         queue
             .write(0, Box::new([1; BLOCK_BYTES]), &mut trace)
             .unwrap();
         let events = trace.len();
+        let next_id = queue.next_id;
 
-        let err = queue
-            .write(LOGICAL_BLOCKS, Box::new([2; BLOCK_BYTES]), &mut trace)
-            .unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        for operation in [
+            Operation::Read {
+                lba: usize::MAX,
+                blocks: 2,
+            },
+            Operation::Read { lba: 0, blocks: 0 },
+            write_request(LOGICAL_BLOCKS - 1, &[2, 3]),
+            write_request(0, &[]),
+        ] {
+            let Err(SubmitError::Rejected(error)) = queue.try_submit(operation, &mut trace) else {
+                panic!("an invalid range must be rejected before the queue advances");
+            };
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        }
         assert_eq!(trace.len(), events);
+        assert_eq!(queue.next_id, next_id);
         assert_eq!(queue.pending.len(), 1);
         assert_eq!(*queue.read(0, &mut trace).unwrap(), [1; BLOCK_BYTES]);
+        assert_eq!(
+            *queue.read(LOGICAL_BLOCKS - 1, &mut trace).unwrap(),
+            [0; BLOCK_BYTES]
+        );
+    }
+
+    #[test]
+    fn a_failed_child_reports_one_error_and_cancels_the_flush_and_later_write() {
+        let mut trace = Vec::new();
+        let mut queue = BlockQueue::new(Ftl::new(), NonZeroUsize::new(3).unwrap());
+        queue
+            .write_range(0, vec![Box::new([1; BLOCK_BYTES]); 2], &mut trace)
+            .unwrap();
+        queue.flush(&mut trace).unwrap();
+        queue.arm_torn_write(1, 37).unwrap();
+
+        let write = queue
+            .try_submit(write_request(0, &[2, 3]), &mut trace)
+            .unwrap();
+        let flush = queue.try_submit(Operation::Flush, &mut trace).unwrap();
+        let later = queue
+            .try_submit(write_request(2, &[4]), &mut trace)
+            .unwrap();
+
+        let completion = queue.complete_next(&mut trace).unwrap();
+        assert_eq!(completion.id, write);
+        let error = completion.result.unwrap_err();
+        assert_eq!(
+            error
+                .get_ref()
+                .unwrap()
+                .downcast_ref::<TornProgram>()
+                .unwrap()
+                .lba,
+            1
+        );
+        assert_eq!(*queue.ftl.read(0, &mut trace).unwrap(), [2; BLOCK_BYTES]);
+        for id in [flush, later] {
+            let completion = queue.complete_next(&mut trace).unwrap();
+            assert_eq!(completion.id, id);
+            assert_eq!(
+                completion.result.unwrap_err().kind(),
+                io::ErrorKind::BrokenPipe
+            );
+        }
+        assert!(queue.complete_next(&mut trace).is_none());
+        assert_eq!(
+            queue.flush(&mut trace).unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+
+        let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
+        let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
+        let blocks = reopened.read_range(0, 3, &mut trace).unwrap();
+        assert_eq!(blocks.len(), 3);
+        for (block, byte) in blocks.iter().zip([1, 1, 0]) {
+            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        }
     }
 }
