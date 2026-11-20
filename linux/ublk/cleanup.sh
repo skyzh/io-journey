@@ -33,6 +33,10 @@ cleanup() {
             fi
         fi
         if reap_server; then
+            if (( server_exit_status != 0 )); then
+                printf 'ublk server exited with status %s.\n' "$server_exit_status" >&2
+                cleanup_failed=1
+            fi
             if device_remains; then
                 if timeout 7 "$binary" remove-owned "$device_id" "$server_pid" "$node_identity" "$socket" >> "$run_dir/stop.log" 2>&1; then
                     printf 'deleted the run-owned ublk device after reaping its server\n'

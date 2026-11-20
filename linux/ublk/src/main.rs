@@ -102,6 +102,7 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
     println!("allocated {id} {} {identity}", std::process::id());
     io::stdout().flush()?;
     let worker_state = state.clone();
+    let listener_state = state.clone();
     let outcome = Arc::new(Mutex::new(None));
     let listener_outcome = outcome.clone();
 
@@ -115,18 +116,28 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
         },
         move |qid, dev| {
             if let Err(error) = target::run_queue(qid, dev, &worker_state, policy) {
-                eprintln!("ublk queue failed: {error}");
+                let message = format!("ublk queue failed: {error}");
+                worker_state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .fail_worker(message.clone());
+                eprintln!("{message}");
             }
         },
         move |ctrl| {
             let result = (|| {
                 println!("ready {id}");
                 io::stdout().flush()?;
-                control_loop(listener.incoming(), &state, CONTROL_TIMEOUT, || {
-                    ctrl.kill_dev()
-                        .map(|_| ())
-                        .map_err(|error| io::Error::other(error.to_string()))
-                })
+                control_loop(
+                    listener.incoming(),
+                    &listener_state,
+                    CONTROL_TIMEOUT,
+                    || {
+                        ctrl.kill_dev()
+                            .map(|_| ())
+                            .map_err(|error| io::Error::other(error.to_string()))
+                    },
+                )
             })();
             if result.is_err() {
                 let _ = ctrl.kill_dev();
@@ -139,6 +150,10 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
         .expect("control outcome")
         .take()
         .ok_or_else(|| io::Error::other("ublk server exited before serving control"))??;
+    state
+        .lock()
+        .map_err(|_| io::Error::other("device lock is poisoned"))?
+        .check_worker()?;
     Ok(())
 }
 
@@ -165,14 +180,14 @@ fn control_loop(
             let mut device = state
                 .lock()
                 .map_err(|_| io::Error::other("device lock is poisoned"))?;
-            match command.trim() {
+            device.check_worker().and_then(|()| match command.trim() {
                 "stats" => Ok(count_line(device.counts())),
                 "checkpoint" => Ok(count_line(device.save_checkpoint())),
                 "cut" => device.cut().map(count_line),
                 "profile-start" => device.start_profile().map(|()| "profiling".into()),
                 "profile-save" => device.save_profile().map(|rows| rows.to_string()),
                 _ => Err(invalid("unknown ublk control command")),
-            }
+            })
         };
         // Reply delivery belongs to this client connection.
         let _ = match reply {
@@ -334,6 +349,42 @@ mod tests {
         let (server, peer) = client(b"stats\n");
         peer.shutdown(Shutdown::Read).unwrap();
         check_stats_then_stop(server);
+    }
+
+    #[test]
+    fn failed_worker_rejects_device_commands_but_accepts_stop() {
+        let (stats, mut stats_peer) = client(b"stats\n");
+        let (checkpoint, mut checkpoint_peer) = client(b"checkpoint\n");
+        let (stop, mut stop_peer) = client(b"stop\n");
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        state
+            .lock()
+            .unwrap()
+            .fail_worker("ublk queue failed: injected failure".into());
+        let mut stopped = false;
+        control_loop(
+            [Ok(stats), Ok(checkpoint), Ok(stop)],
+            &state,
+            TEST_TIMEOUT,
+            || {
+                stopped = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        for peer in [&mut stats_peer, &mut checkpoint_peer] {
+            let mut reply = String::new();
+            peer.read_to_string(&mut reply).unwrap();
+            assert_eq!(reply, "error ublk queue failed: injected failure\n");
+        }
+        let mut reply = String::new();
+        stop_peer.read_to_string(&mut reply).unwrap();
+        assert_eq!(reply, "stopped\n");
+        assert!(stopped);
+        let mut device = state.lock().unwrap();
+        assert!(device.check_worker().is_err());
+        assert!(device.cut().is_err());
     }
 
     #[test]
