@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use io_journey::record::{decode, encode, DEMO_RECORDS};
-use libublk::ctrl::{UblkCtrl, UblkCtrlBuilder};
+use libublk::ctrl::UblkCtrlBuilder;
 use libublk::io::UblkDev;
 use libublk::{sys, UblkFlags};
 use schedule::Policy;
@@ -122,7 +122,11 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
             let result = (|| {
                 println!("ready {id}");
                 io::stdout().flush()?;
-                control_loop(listener, ctrl, &state)
+                control_loop(listener.incoming(), &state, CONTROL_TIMEOUT, || {
+                    ctrl.kill_dev()
+                        .map(|_| ())
+                        .map_err(|error| io::Error::other(error.to_string()))
+                })
             })();
             if result.is_err() {
                 let _ = ctrl.kill_dev();
@@ -139,21 +143,21 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
 }
 
 fn control_loop(
-    listener: UnixListener,
-    ctrl: &UblkCtrl,
+    streams: impl IntoIterator<Item = io::Result<UnixStream>>,
     state: &Mutex<LabDevice>,
+    timeout: Duration,
+    stop: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
-    for stream in listener.incoming() {
+    for stream in streams {
         let mut stream = stream?;
-        stream.set_read_timeout(Some(CONTROL_TIMEOUT))?;
-        stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
-        let mut command = String::new();
-        BufReader::new((&stream).take(64)).read_line(&mut command)?;
+        let Ok(command) = read_control_command(&stream, timeout) else {
+            continue;
+        };
 
         if command.trim() == "stop" {
-            ctrl.kill_dev()
-                .map_err(|error| io::Error::other(error.to_string()))?;
-            writeln!(stream, "stopped")?;
+            stop()?;
+            // The stop succeeded even if the client left before its reply.
+            let _ = writeln!(stream, "stopped");
             return Ok(());
         }
 
@@ -170,12 +174,24 @@ fn control_loop(
                 _ => Err(invalid("unknown ublk control command")),
             }
         };
-        match reply {
-            Ok(reply) => writeln!(stream, "{reply}")?,
-            Err(error) => writeln!(stream, "error {error}")?,
-        }
+        // Reply delivery belongs to this client connection.
+        let _ = match reply {
+            Ok(reply) => writeln!(stream, "{reply}"),
+            Err(error) => writeln!(stream, "error {error}"),
+        };
     }
     Err(io::Error::other("ublk control listener stopped"))
+}
+
+fn read_control_command(stream: &UnixStream, timeout: Duration) -> io::Result<String> {
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout))?;
+    let mut command = String::new();
+    BufReader::new(stream.take(64)).read_line(&mut command)?;
+    if !command.ends_with('\n') {
+        return Err(invalid("unterminated ublk control command"));
+    }
+    Ok(command)
 }
 
 fn count_line(
@@ -250,4 +266,87 @@ fn verify(mount: &Path, expected: &[&[u8]]) -> io::Result<()> {
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_TIMEOUT: Duration = Duration::from_millis(50);
+
+    fn client(command: &[u8]) -> (UnixStream, UnixStream) {
+        let (server, mut peer) = UnixStream::pair().unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        peer.write_all(command).unwrap();
+        (server, peer)
+    }
+
+    fn check_stats_then_stop(abandoned: UnixStream) {
+        let (stats, mut stats_peer) = client(b"stats\n");
+        let (stop, mut stop_peer) = client(b"stop\n");
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        let mut stopped = false;
+        control_loop(
+            [Ok(abandoned), Ok(stats), Ok(stop)],
+            &state,
+            TEST_TIMEOUT,
+            || {
+                stopped = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        let mut reply = String::new();
+        stats_peer.read_to_string(&mut reply).unwrap();
+        assert_eq!(reply, "0 0 0\n");
+        reply.clear();
+        stop_peer.read_to_string(&mut reply).unwrap();
+        assert_eq!(reply, "stopped\n");
+        assert!(stopped);
+    }
+
+    #[test]
+    fn timed_out_client_does_not_stop_control_loop() {
+        let (server, mut peer) = client(b"sta");
+        check_stats_then_stop(server);
+        assert_eq!(peer.read(&mut [0]).unwrap(), 0);
+    }
+
+    #[test]
+    fn unterminated_stop_does_not_stop_control_loop() {
+        let (server, peer) = client(b"stop");
+        peer.shutdown(Shutdown::Write).unwrap();
+        check_stats_then_stop(server);
+    }
+
+    #[test]
+    fn truncated_command_does_not_stop_control_loop() {
+        let mut command = b"stop".to_vec();
+        command.resize(64, b' ');
+        command.extend_from_slice(b"other\n");
+        let (server, _peer) = client(&command);
+        check_stats_then_stop(server);
+    }
+
+    #[test]
+    fn failed_reply_does_not_stop_control_loop() {
+        let (server, peer) = client(b"stats\n");
+        peer.shutdown(Shutdown::Read).unwrap();
+        check_stats_then_stop(server);
+    }
+
+    #[test]
+    fn stop_succeeds_when_its_reply_is_lost() {
+        let (server, peer) = client(b"stop\n");
+        peer.shutdown(Shutdown::Read).unwrap();
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        let mut stopped = false;
+        control_loop([Ok(server)], &state, TEST_TIMEOUT, || {
+            stopped = true;
+            Ok(())
+        })
+        .unwrap();
+        assert!(stopped);
+    }
 }
