@@ -6,10 +6,10 @@ use crate::ftl::{FlashImage, Ftl};
 use crate::nand::Block;
 use crate::Trace;
 
-pub(crate) type RequestId = u64;
+pub type RequestId = u64;
 
 #[derive(Debug)]
-pub(crate) enum Operation {
+pub enum Operation {
     Read { lba: usize, blocks: usize },
     Write { lba: usize, data: Vec<Block> },
     Flush,
@@ -42,19 +42,19 @@ fn format_span(verb: &str, lba: usize, blocks: usize) -> String {
 }
 
 #[derive(Debug)]
-pub(crate) enum SubmitError {
+pub enum SubmitError {
     Full(Submission),
     Rejected(io::Error),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Driver {
+pub enum Driver {
     Explicit,
     Filesystem,
 }
 
 #[derive(Debug)]
-pub(crate) struct Submission {
+pub struct Submission {
     operation: Operation,
     driver: Driver,
 }
@@ -69,7 +69,7 @@ impl From<Operation> for Submission {
 }
 
 #[derive(Debug)]
-pub(crate) enum Response {
+pub enum Response {
     Read(Vec<Block>),
     Done,
 }
@@ -79,12 +79,12 @@ struct Request {
     submission: Submission,
 }
 
-pub(crate) struct Completion {
-    pub(crate) id: RequestId,
-    pub(crate) result: io::Result<Response>,
+pub struct Completion {
+    pub id: RequestId,
+    pub result: io::Result<Response>,
 }
 
-pub(crate) struct BlockQueue {
+pub struct BlockQueue {
     ftl: Ftl,
     pending: VecDeque<Request>,
     depth: NonZeroUsize,
@@ -93,7 +93,7 @@ pub(crate) struct BlockQueue {
 }
 
 impl BlockQueue {
-    pub(crate) fn new(ftl: Ftl, depth: NonZeroUsize) -> Self {
+    pub fn new(ftl: Ftl, depth: NonZeroUsize) -> Self {
         Self {
             ftl,
             pending: VecDeque::new(),
@@ -103,18 +103,18 @@ impl BlockQueue {
         }
     }
 
-    pub(crate) fn logical_blocks(&self) -> usize {
+    pub fn logical_blocks(&self) -> usize {
         self.ftl.logical_blocks()
     }
 
-    pub(crate) fn read(&mut self, lba: usize, trace: &mut Trace) -> io::Result<Block> {
+    pub fn read(&mut self, lba: usize, trace: &mut Trace) -> io::Result<Block> {
         Ok(self
             .read_range(lba, 1, trace)?
             .pop()
             .expect("one read block"))
     }
 
-    pub(crate) fn read_range(
+    pub fn read_range(
         &mut self,
         lba: usize,
         blocks: usize,
@@ -128,11 +128,11 @@ impl BlockQueue {
     }
 
     /// Accept a write. The device executes it when the queue advances.
-    pub(crate) fn write(&mut self, lba: usize, data: Block, trace: &mut Trace) -> io::Result<()> {
+    pub fn write(&mut self, lba: usize, data: Block, trace: &mut Trace) -> io::Result<()> {
         self.write_range(lba, vec![data], trace)
     }
 
-    pub(crate) fn write_range(
+    pub fn write_range(
         &mut self,
         lba: usize,
         data: Vec<Block>,
@@ -142,23 +142,28 @@ impl BlockQueue {
         Ok(())
     }
 
-    pub(crate) fn flush(&mut self, trace: &mut Trace) -> io::Result<()> {
+    pub fn flush(&mut self, trace: &mut Trace) -> io::Result<()> {
         let id = self.submit_driven(Operation::Flush, trace)?;
         self.wait(id, trace)?;
         Ok(())
     }
 
-    pub(crate) fn power_cut(self) -> FlashImage {
+    pub fn power_cut(self) -> FlashImage {
         self.ftl.power_cut()
     }
 
-    pub(crate) fn arm_torn_write(&mut self, lba: usize, prefix_bytes: usize) -> io::Result<()> {
+    /// Retain the last completed flush without flushing pending work.
+    pub fn checkpoint(&self) -> FlashImage {
+        self.ftl.checkpoint()
+    }
+
+    pub fn arm_torn_write(&mut self, lba: usize, prefix_bytes: usize) -> io::Result<()> {
         self.ftl.arm_torn_write(lba, prefix_bytes)
     }
 
     /// Accept one request without executing any queued work. On backpressure
     /// the caller gets the request back and can retry after a completion.
-    pub(crate) fn try_submit(
+    pub fn try_submit(
         &mut self,
         submission: impl Into<Submission>,
         trace: &mut Trace,
@@ -211,7 +216,7 @@ impl BlockQueue {
 
     /// Advance the oldest request with its owning driver. The outer result
     /// rejects a driver mismatch. Execution errors retain the request ID.
-    pub(crate) fn complete_next(
+    pub fn complete_next(
         &mut self,
         driver: Driver,
         trace: &mut Trace,

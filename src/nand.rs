@@ -1,22 +1,22 @@
 use std::io;
 use std::ops::Range;
 
-pub(crate) const BLOCK_BYTES: usize = 4096;
+pub const BLOCK_BYTES: usize = 4096;
 pub(crate) const PAGES_PER_ERASE_BLOCK: usize = 4;
 pub(crate) const ERASE_BLOCKS: usize = 4;
-pub(crate) const ERASED_BYTE: u8 = 0xff;
+pub const ERASED_BYTE: u8 = 0xff;
 
-pub(crate) type Block = Box<[u8; BLOCK_BYTES]>;
+pub type Block = Box<[u8; BLOCK_BYTES]>;
 
 #[derive(Clone, Copy)]
-pub(crate) struct NandGeometry {
+pub struct NandGeometry {
     erase_blocks: usize,
     pages_per_erase_block: usize,
     physical_pages: usize,
 }
 
 impl NandGeometry {
-    pub(crate) fn new(erase_blocks: usize, pages_per_erase_block: usize) -> io::Result<Self> {
+    pub fn new(erase_blocks: usize, pages_per_erase_block: usize) -> io::Result<Self> {
         let physical_pages = erase_blocks
             .checked_mul(pages_per_erase_block)
             .filter(|&pages| pages > 0 && pages.checked_mul(BLOCK_BYTES).is_some())

@@ -1,21 +1,17 @@
 mod app;
 mod filesystem;
-mod ftl;
-mod nand;
-mod queue;
 
 use std::io;
 use std::num::NonZeroUsize;
 
 use filesystem::{FileSystem, FIRST_DATA_LBA};
 use ftl::{Ftl, TornProgram};
+use io_journey::record::{DEMO_RECORDS as ACKNOWLEDGED, HEADER_BYTES};
+use io_journey::{ftl, nand, queue, Trace};
 use nand::ERASED_BYTE;
 use queue::BlockQueue;
 
-type Trace = Vec<String>;
-
 const QUEUE_DEPTH: NonZeroUsize = NonZeroUsize::new(2).unwrap();
-const ACKNOWLEDGED: [&[u8]; 2] = [b"first", b"second"];
 const VOLATILE: &[u8] = b"volatile";
 const TORN: &[u8] = b"torn";
 
@@ -60,9 +56,9 @@ fn demo(trace: &mut Trace) -> io::Result<()> {
     // new frame. Tear just after writing two bytes of its payload.
     let committed_bytes: usize = ACKNOWLEDGED
         .iter()
-        .map(|record| app::HEADER_BYTES + record.len())
+        .map(|record| HEADER_BYTES + record.len())
         .sum();
-    let tear_after = committed_bytes + app::HEADER_BYTES + 2;
+    let tear_after = committed_bytes + HEADER_BYTES + 2;
     queue.arm_torn_write(FIRST_DATA_LBA, tear_after)?;
     let flush_error = {
         let mut fs = FileSystem::open(&mut queue, trace)?;
