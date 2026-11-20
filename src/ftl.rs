@@ -2,7 +2,7 @@ use std::fmt;
 use std::io;
 
 use crate::nand::{
-    erase_block_pages, Block, Nand, BLOCK_BYTES, ERASED_BYTE, ERASE_BLOCKS, PAGES_PER_ERASE_BLOCK,
+    Block, Nand, NandGeometry, BLOCK_BYTES, ERASED_BYTE, ERASE_BLOCKS, PAGES_PER_ERASE_BLOCK,
 };
 use crate::Trace;
 
@@ -12,7 +12,7 @@ pub(crate) const LOGICAL_BLOCKS: usize = 8;
 #[derive(Clone)]
 pub(crate) struct FlashImage {
     nand: Nand,
-    map: [Option<usize>; LOGICAL_BLOCKS],
+    map: Vec<Option<usize>>,
 }
 
 impl FlashImage {
@@ -47,21 +47,45 @@ impl std::error::Error for TornProgram {}
 pub(crate) struct Ftl {
     live: FlashImage,
     durable: FlashImage,
-    tear_after: Option<usize>,
+    tear: Option<ProgramFault>,
+}
+
+struct ProgramFault {
+    lba: usize,
+    prefix_bytes: usize,
 }
 
 impl Ftl {
     pub(crate) fn new() -> Self {
-        Self::from_image(FlashImage {
-            nand: Nand::new(),
-            map: [None; LOGICAL_BLOCKS],
-        })
+        let geometry =
+            NandGeometry::new(ERASE_BLOCKS, PAGES_PER_ERASE_BLOCK).expect("demo geometry");
+        Self::with_geometry(LOGICAL_BLOCKS, geometry).expect("demo device")
+    }
+
+    pub(crate) fn with_geometry(logical_blocks: usize, geometry: NandGeometry) -> io::Result<Self> {
+        // At the reserve, at least one occupied page must be stale.
+        if !(1..geometry.physical_pages() - geometry.pages_per_erase_block())
+            .contains(&logical_blocks)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "logical capacity must leave an erase block and one extra physical page",
+            ));
+        }
+        let mut map = Vec::new();
+        map.try_reserve_exact(logical_blocks)
+            .map_err(io::Error::other)?;
+        map.resize(logical_blocks, None);
+        Ok(Self::from_image(FlashImage {
+            nand: Nand::new(geometry)?,
+            map,
+        }))
     }
 
     pub(crate) fn open(mut image: FlashImage, trace: &mut Trace) -> io::Result<Self> {
         // An interrupted program can spend one of the reserved pages.
         // Reclaim before cloning so both copies have room for the next cut.
-        if image.nand.erased_pages().count() < PAGES_PER_ERASE_BLOCK {
+        if image.nand.erased_pages().count() < image.nand.geometry().pages_per_erase_block() {
             image.collect(trace)?;
             trace.push("ftl    restored the erase-block reserve on reopen".into());
         }
@@ -72,12 +96,26 @@ impl Ftl {
         Self {
             live: image.clone(),
             durable: image,
-            tear_after: None,
+            tear: None,
         }
     }
 
+    pub(crate) fn logical_blocks(&self) -> usize {
+        self.live.map.len()
+    }
+
+    fn check_lba(&self, lba: usize) -> io::Result<()> {
+        if lba >= self.logical_blocks() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("LBA {lba} out of range"),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn read(&self, lba: usize, trace: &mut Trace) -> io::Result<Block> {
-        check_lba(lba)?;
+        self.check_lba(lba)?;
         match self.live.map[lba] {
             Some(page) => {
                 trace.push(format!("ftl    read LBA {lba} from page {page}"));
@@ -91,14 +129,17 @@ impl Ftl {
     }
 
     pub(crate) fn write(&mut self, lba: usize, data: Block, trace: &mut Trace) -> io::Result<()> {
-        check_lba(lba)?;
-        if let Some(bytes) = self.tear_after.take() {
-            return self.tear_program(lba, &data, bytes, trace);
+        self.check_lba(lba)?;
+        if self.tear.as_ref().is_some_and(|fault| fault.lba == lba) {
+            let fault = self.tear.take().expect("armed program");
+            return self.tear_program(lba, &data, fault.prefix_bytes, trace);
         }
 
         // An erase block's worth of free pages leaves room to move live data
         // out of a victim before erasing it.
-        if self.live.nand.erased_pages().count() <= PAGES_PER_ERASE_BLOCK {
+        if self.live.nand.erased_pages().count()
+            <= self.live.nand.geometry().pages_per_erase_block()
+        {
             self.live.collect(trace)?;
         }
         let page = self.live.nand.erased_pages().next().expect("free page");
@@ -124,14 +165,15 @@ impl Ftl {
         self.durable
     }
 
-    pub(crate) fn tear_next_program(&mut self, bytes: usize) -> io::Result<()> {
-        if !(1..BLOCK_BYTES).contains(&bytes) {
+    pub(crate) fn arm_torn_write(&mut self, lba: usize, prefix_bytes: usize) -> io::Result<()> {
+        self.check_lba(lba)?;
+        if !(1..BLOCK_BYTES).contains(&prefix_bytes) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "torn program must write a proper, nonempty prefix",
             ));
         }
-        self.tear_after = Some(bytes);
+        self.tear = Some(ProgramFault { lba, prefix_bytes });
         Ok(())
     }
 
@@ -163,11 +205,12 @@ impl Ftl {
 
 impl FlashImage {
     fn collect(&mut self, trace: &mut Trace) -> io::Result<()> {
+        let geometry = self.nand.geometry();
         let free = self.nand.erased_pages().count();
         let mut victim = None;
         let mut most_stale = 0;
-        for erase_block in 0..ERASE_BLOCKS {
-            let pages = erase_block_pages(erase_block);
+        for erase_block in 0..geometry.erase_blocks() {
+            let pages = geometry.erase_block_pages(erase_block);
             let used = pages
                 .clone()
                 .filter(|&page| self.nand.read(page).is_some())
@@ -179,14 +222,14 @@ impl FlashImage {
                 .filter(|page| pages.contains(page))
                 .count();
             let stale = used - mapped;
-            let free_outside = free - (PAGES_PER_ERASE_BLOCK - used);
+            let free_outside = free - (geometry.pages_per_erase_block() - used);
             if stale > most_stale && mapped <= free_outside {
                 victim = Some(erase_block);
                 most_stale = stale;
             }
         }
         let victim = victim.ok_or_else(|| io::Error::other("no reclaimable NAND erase block"))?;
-        let victim_pages = erase_block_pages(victim);
+        let victim_pages = geometry.erase_block_pages(victim);
 
         for (lba, mapping) in self.map.iter_mut().enumerate() {
             if let Some(source) = mapping.filter(|page| victim_pages.contains(page)) {
@@ -211,19 +254,95 @@ impl FlashImage {
     }
 }
 
-pub(crate) fn check_lba(lba: usize) -> io::Result<()> {
-    if lba >= LOGICAL_BLOCKS {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("LBA {lba} out of range"),
-        ));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn geometry_rejects_zero_overflow_and_a_missing_spare_page() {
+        for (blocks, pages) in [(0, 4), (4, 0), (usize::MAX, 2), (usize::MAX, 1)] {
+            let error = NandGeometry::new(blocks, pages).err().unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        }
+        let geometry = NandGeometry::new(2, 4).unwrap();
+        for logical_blocks in [0, 4, 8] {
+            let error = Ftl::with_geometry(logical_blocks, geometry).err().unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        }
+    }
+
+    #[test]
+    fn repeated_cuts_restore_the_reserve_at_the_geometry_limit() {
+        let mut trace = Vec::new();
+        for (erase_blocks, reserve, logical_blocks) in [(3, 1, 1), (2, 4, 3), (5, 16, 63)] {
+            let geometry = NandGeometry::new(erase_blocks, reserve).unwrap();
+            let mut ftl = Ftl::with_geometry(logical_blocks, geometry).unwrap();
+            for lba in 0..logical_blocks {
+                ftl.write(lba, Box::new([lba as u8; BLOCK_BYTES]), &mut trace)
+                    .unwrap();
+            }
+            while ftl.live.nand.erased_pages().count() > reserve {
+                ftl.write(0, Box::new([0; BLOCK_BYTES]), &mut trace)
+                    .unwrap();
+            }
+            ftl.flush(&mut trace);
+
+            for _ in 0..reserve + 2 {
+                ftl.arm_torn_write(0, 37).unwrap();
+                let error = ftl
+                    .write(0, Box::new([0x80; BLOCK_BYTES]), &mut trace)
+                    .unwrap_err();
+                assert!(error.get_ref().unwrap().is::<TornProgram>());
+                ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+                assert!(ftl.durable.nand.erased_pages().count() >= reserve);
+                for lba in 0..logical_blocks {
+                    assert_eq!(
+                        *ftl.read(lba, &mut trace).unwrap(),
+                        [lba as u8; BLOCK_BYTES]
+                    );
+                }
+            }
+
+            ftl.write(0, Box::new([0x91; BLOCK_BYTES]), &mut trace)
+                .unwrap();
+            ftl.flush(&mut trace);
+            let reopened = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+            assert_eq!(*reopened.read(0, &mut trace).unwrap(), [0x91; BLOCK_BYTES]);
+        }
+    }
+
+    #[test]
+    fn a_torn_write_requires_an_erased_page_in_both_images() {
+        let mut trace = Vec::new();
+        let geometry = NandGeometry::new(4, 1).unwrap();
+        let mut ftl = Ftl::with_geometry(2, geometry).unwrap();
+        for (lba, byte) in [(0, 1), (1, 2), (0, 3)] {
+            ftl.write(lba, Box::new([byte; BLOCK_BYTES]), &mut trace)
+                .unwrap();
+        }
+        ftl.flush(&mut trace);
+        ftl.arm_torn_write(0, 19).unwrap();
+        let error = ftl
+            .write(0, Box::new([4; BLOCK_BYTES]), &mut trace)
+            .unwrap_err();
+        assert!(error.get_ref().unwrap().is::<TornProgram>());
+
+        let mut ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+        ftl.arm_torn_write(1, 19).unwrap();
+        ftl.write(0, Box::new([5; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        let error = ftl
+            .write(1, Box::new([6; BLOCK_BYTES]), &mut trace)
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "torn program needs a page erased in both images"
+        );
+
+        let reopened = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
+        assert_eq!(*reopened.read(0, &mut trace).unwrap(), [3; BLOCK_BYTES]);
+        assert_eq!(*reopened.read(1, &mut trace).unwrap(), [2; BLOCK_BYTES]);
+    }
 
     #[test]
     fn collection_copies_live_pages_before_erasing_and_recovery_keeps_them() {
@@ -255,7 +374,7 @@ mod tests {
         ftl.write(1, Box::new([0x12; BLOCK_BYTES]), &mut trace)
             .unwrap();
         ftl.flush(&mut trace);
-        ftl.tear_next_program(19).unwrap();
+        ftl.arm_torn_write(1, 19).unwrap();
         let error = ftl
             .write(1, Box::new([0x34; BLOCK_BYTES]), &mut trace)
             .unwrap_err();
@@ -296,7 +415,7 @@ mod tests {
             std::array::from_fn(|lba| ftl.read(lba, &mut trace).unwrap());
 
         for _ in 0..4 {
-            ftl.tear_next_program(37).unwrap();
+            ftl.arm_torn_write(1, 37).unwrap();
             let error = ftl
                 .write(1, Box::new([0x80; BLOCK_BYTES]), &mut trace)
                 .unwrap_err();
