@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+learner-append = ["io-journey/learner-append"]
+
 [dependencies]
 io-journey = { path = "../.." }
 io-uring = "=0.7.16"

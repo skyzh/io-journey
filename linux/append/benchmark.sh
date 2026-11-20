@@ -11,12 +11,22 @@ fail() {
     exit 1
 }
 
-[[ $# == 0 && $(id -u) == 0 && -c /dev/fuse && -c /dev/ublk-control ]] ||
+[[ ( $# == 0 || ( $# == 1 && "$1" == learner ) ) && $(id -u) == 0 &&
+   -c /dev/fuse && -c /dev/ublk-control ]] ||
     fail 'Run in a private guest mount namespace with FUSE and ublk.'
 [[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs && $(findmnt -n -o FSTYPE -T /run) == tmpfs ]] ||
     fail 'Keep /dev/shm and /run on tmpfs.'
 require_private_mount_namespace
 require_private_mount_parent /dev/shm
+
+ublk_features=()
+fuse_features=()
+append_features=()
+if (( $# == 1 )); then
+    ublk_features=(--features learner-queue)
+    fuse_features=(--features learner-journal)
+    append_features=(--features learner-append)
+fi
 
 build_dir=$(mktemp -d /dev/shm/io-journey-append-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT
@@ -29,11 +39,14 @@ printf 'Guest capture directory %s\n' "$capture"
     printf '%s\n' 'io-uring 0.7.16, fuser 0.16.0. Rust release builds.'
     printf '%s\n' 'Fresh 32 MiB ublk device with a write-back cache per case.'
     printf '%s\n' 'Four writes per wave, group sizes 4 and 32. 64 warmup and 256 measured 512-byte records.'
+    if (( ${#append_features[@]} != 0 )); then
+        printf '%s\n' 'Uses the learner FTL, queue, journal, recovery, and append engine.'
+    fi
 } > "$capture/environment.txt"
 
-build_adapter "$ublk_dir" "$build_dir" --release
-cargo build --locked --quiet --release --manifest-path "$case_dir/../fuse/Cargo.toml"
-cargo build --locked --quiet --release --manifest-path "$case_dir/Cargo.toml"
+build_adapter "$ublk_dir" "$build_dir" --release "${ublk_features[@]}"
+cargo build --locked --quiet --release --manifest-path "$case_dir/../fuse/Cargo.toml" "${fuse_features[@]}"
+cargo build --locked --quiet --release --manifest-path "$case_dir/Cargo.toml" "${append_features[@]}"
 export IO_JOURNEY_ADAPTER_BIN="$build_dir/target/release/io-journey-ublk"
 export IO_JOURNEY_FUSE_BIN="$build_dir/target/release/io-journey-fuse"
 export IO_JOURNEY_APPEND_BIN="$build_dir/target/release/io-journey-append"

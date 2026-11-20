@@ -2,11 +2,13 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|admit|order|flush|dispatch|commit|replay}.' >&2
+    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
 features=learner
+manifest=Cargo.toml
+cargo_args=(--offline --lib)
 case "$1" in
     previous) test_args=(nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block -- --exact) ;;
     map) test_args=(ftl::tests::successful_programs_publish_the_new_mapping -- --exact) ;;
@@ -36,6 +38,20 @@ case "$1" in
         features=learner-journal
         test_args=(journal_fs::tests::)
         ;;
+    receipt)
+        features=learner-append
+        test_args=(record::tests::)
+        ;;
+    completions|ack)
+        features=learner-append
+        manifest=linux/append/Cargo.toml
+        cargo_args=()
+        if [[ "$1" == completions ]]; then
+            test_args=(engine::tests::)
+        else
+            test_args=(-- --skip engine::tests::)
+        fi
+        ;;
     *) usage ;;
 esac
 
@@ -49,4 +65,4 @@ trap 'rm -rf -- "$scratch"' EXIT
 mkdir "$scratch/tmp"
 export CARGO_HOME="$scratch/cargo" CARGO_TARGET_DIR="$scratch/target"
 export TMPDIR="$scratch/tmp" CARGO_INCREMENTAL=0
-cargo test --locked --offline --manifest-path "$repo_dir/Cargo.toml" --features "$features" --lib "${test_args[@]}"
+cargo test --locked --manifest-path "$repo_dir/$manifest" --features "$features" "${cargo_args[@]}" "${test_args[@]}"

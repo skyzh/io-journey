@@ -8,5 +8,6 @@ publish = false
 learner = []
 learner-queue = ["learner"]
 learner-journal = ["learner-queue"]
+learner-append = ["learner-journal"]
 
 [dependencies]

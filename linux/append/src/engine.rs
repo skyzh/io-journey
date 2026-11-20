@@ -1,3 +1,11 @@
+#[cfg_attr(
+    feature = "learner-append",
+    path = "../../../course/learner/append-completions.rs"
+)]
+#[cfg_attr(not(feature = "learner-append"), path = "engine/reference.rs")]
+mod completion;
+use completion::{check_completions, drain_ring_wave};
+
 use std::fs::File;
 use std::io;
 use std::os::fd::AsRawFd;
@@ -46,6 +54,7 @@ impl Engine {
     }
 }
 
+#[cfg_attr(feature = "learner-append", allow(dead_code))]
 struct Completion {
     id: u64,
     result: io::Result<usize>,
@@ -194,47 +203,43 @@ fn retire_ring_wave(
     retained: &mut Vec<Arc<[u8]>>,
     mut poll: impl FnMut(&mut Vec<Completion>) -> io::Result<()>,
 ) -> io::Result<()> {
-    let mut completed = Vec::with_capacity(wave.len());
-    while completed.len() < wave.len() {
-        poll(&mut completed)?;
+    let mut seen = [false; DEPTH];
+    let mut invalid_ids = false;
+    let mut failed_write = false;
+    let result = drain_ring_wave(wave, |completed| {
+        if invalid_ids || seen[..wave.len()].iter().all(|&done| done) {
+            return Err(invalid_completion("no further completions expected"));
+        }
+        let first = completed.len();
+        poll(completed)?;
+        // Only the entries appended by the kernel poll can retire buffers.
+        for completion in &completed[first..] {
+            let Some(index) = wave.iter().position(|request| request.id == completion.id) else {
+                invalid_ids = true;
+                continue;
+            };
+            if seen[index] {
+                invalid_ids = true;
+                continue;
+            }
+            seen[index] = true;
+            failed_write |= !matches!(
+                &completion.result, Ok(size) if *size == wave[index].bytes.len()
+            );
+        }
+        Ok(())
+    });
+
+    if invalid_ids || !seen[..wave.len()].iter().all(|&done| done) {
+        return result.and(Err(invalid_completion("incomplete kernel completion set")));
     }
-    let result = check_completions(wave, completed);
-    if !matches!(&result, Err(error) if error.kind() == io::ErrorKind::InvalidData) {
-        retained.clear();
+    retained.clear();
+    if failed_write && result.is_ok() {
+        return Err(io::Error::other(
+            "wave reported success after a failed write",
+        ));
     }
     result
-}
-
-fn check_completions(wave: &[Request], completed: Vec<Completion>) -> io::Result<()> {
-    let mut seen = [false; DEPTH];
-    let mut error = None;
-    for completion in completed {
-        let index = wave
-            .iter()
-            .position(|item| item.id == completion.id)
-            .ok_or_else(|| invalid_completion("unknown completion ID"))?;
-        if seen[index] {
-            return Err(invalid_completion("duplicate completion ID"));
-        }
-        seen[index] = true;
-        let expected = wave[index].bytes.len();
-        let result = completion.result.and_then(|size| {
-            if size != expected {
-                return Err(io::Error::new(
-                    io::ErrorKind::WriteZero,
-                    format!("request {} wrote {size} of {expected} bytes", completion.id),
-                ));
-            }
-            Ok(())
-        });
-        if let Err(failure) = result {
-            error.get_or_insert(failure);
-        }
-    }
-    if !seen[..wave.len()].iter().all(|done| *done) {
-        return Err(invalid_completion("missing completion ID"));
-    }
-    error.map_or(Ok(()), Err)
 }
 
 fn invalid_completion(message: &str) -> io::Error {
@@ -244,6 +249,72 @@ fn invalid_completion(message: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_wait_or_invalid_set_keeps_unproven_buffers() {
+        let wave = [request(1), request(2)];
+        let size = wave[0].bytes.len();
+        for (second_id, expected) in [
+            (None, io::ErrorKind::Other),
+            (Some(1), io::ErrorKind::InvalidData),
+            (Some(99), io::ErrorKind::InvalidData),
+        ] {
+            let mut retained = wave
+                .iter()
+                .map(|item| item.bytes.clone())
+                .collect::<Vec<_>>();
+            let result = retire_ring_wave(&wave, &mut retained, |completed| {
+                if completed.is_empty() {
+                    completed.push(Completion {
+                        id: 1,
+                        result: Ok(size),
+                    });
+                } else {
+                    let id = second_id.ok_or_else(|| io::Error::other("injected poll failure"))?;
+                    completed.push(Completion {
+                        id,
+                        result: Ok(size),
+                    });
+                }
+                Ok(())
+            });
+            assert_eq!(result.unwrap_err().kind(), expected);
+            assert_eq!(retained.len(), wave.len());
+            for item in &wave {
+                assert_eq!(Arc::strong_count(&item.bytes), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn a_valid_id_set_retires_even_when_a_write_returns_invalid_data() {
+        let wave = [request(1), request(2)];
+        let mut retained = wave
+            .iter()
+            .map(|item| item.bytes.clone())
+            .collect::<Vec<_>>();
+        let result = retire_ring_wave(&wave, &mut retained, |completed| {
+            completed.push(Completion {
+                id: 2,
+                result: Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "injected write error",
+                )),
+            });
+            completed.push(Completion {
+                id: 1,
+                result: Ok(wave[0].bytes.len()),
+            });
+            Ok(())
+        });
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "injected write error");
+        assert!(retained.is_empty());
+        for item in &wave {
+            assert_eq!(Arc::strong_count(&item.bytes), 1);
+        }
+    }
 
     fn request(id: u64) -> Request {
         Request {

@@ -87,19 +87,27 @@ control() {
 start_mount
 read -r _ _ previous_flush < <(control stats)
 timeout 30 "$append" run "$engine" "$group" "$mount_dir" > "$run_dir/measurement.tsv"
+IFS=$'\t' read -r reported_engine reported_group depth warm measured measured_bytes _ < "$run_dir/measurement.tsv"
+[[ "$reported_engine" == "$engine" && "$reported_group" == "$group" && "$depth" == 4 &&
+   "$warm" == 64 && "$measured" == 256 && "$measured_bytes" == 131072 ]] ||
+    fail 'The append engine did not report the complete acknowledgement receipt.'
+acknowledged_records=$((warm + measured))
 checkpoint=$(control checkpoint)
 read -r _ _ acknowledged_flush <<< "$checkpoint"
 (( acknowledged_flush > previous_flush )) || fail 'The timed appends did not reach a new FTL flush.'
+printf 'Application acknowledged %s records through file sync.\n' "$acknowledged_records"
+grep -m 1 -F "flush $acknowledged_flush published FTL checkpoint" "${socket%/*}/server.log"
 timeout 20 "$append" tail "$mount_dir"
 stop_mount
 blockdev --flushbufs "$backend"
 [[ $(control cut) == "$checkpoint" ]] || fail 'The FTL did not reopen the acknowledged checkpoint.'
 start_mount
-timeout 20 "$append" verify "$mount_dir"
+timeout 20 "$append" verify "$mount_dir" "$acknowledged_records"
 stop_mount
 mount_absent "$mount_dir" && [[ -z "$fuse_pid" ]] || fail 'Could not verify mount and server cleanup.'
 (
     set -o noclobber
     printf '%s\t%s\t%s\n' "$filesystem" "$acknowledged_flush" "$(cat "$run_dir/measurement.tsv")" > "$output/result.tsv"
 )
-printf 'Reopened FTL flush %s and verified all 320 acknowledged records.\n' "$acknowledged_flush"
+printf 'Reopened FTL flush %s and verified all %s acknowledged records.\n' \
+    "$acknowledged_flush" "$acknowledged_records"
