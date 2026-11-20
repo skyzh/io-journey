@@ -24,8 +24,8 @@ Implement `persist_redo` using the supplied `Disk` interface.
 
 The marker binds a generation and checksum to that redo frame. The
 supplied code then writes and flushes the home block, and clears and
-flushes the marker. A failed barrier leaves the filesystem requiring
-reopen. Run the commit check again and follow the names that survive
+flushes the marker. A failed transaction barrier leaves the filesystem
+requiring reopen. Run the commit check again and follow the names that survive
 file sync and directory sync.
 
 ## Choose what to reopen
@@ -47,9 +47,9 @@ A cut during replay can leave the marker present. Replaying it
 again must reach the same generation. The tests also reject a
 damaged frame or a different valid frame at the same generation.
 
-Try the full-device fixture in the same check. A partial shrink
-needs a new block to zero the truncated suffix while preserving
-the earlier committed bytes. On a full device it fails before
+Try the full-device fixture in the same check. If the new end falls
+inside an allocated block, the shrink needs a new block to zero the
+suffix while preserving the earlier committed bytes. On a full device it fails before
 changing the file. An aligned shrink only drops a whole block
 reference. After sync it reclaims that block and recovers the
 shorter file.
