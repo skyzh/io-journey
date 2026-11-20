@@ -45,7 +45,8 @@ old name and bytes. A cut at or after the marker recovers the new
 name and bytes, with exactly the corresponding allocated blocks.
 A cut during replay can leave the marker present. Replaying it
 again must reach the same generation. The tests also reject a
-damaged frame or a different valid frame at the same generation.
+damaged frame, a different valid frame at the same generation, and a
+matching checksum with the wrong generation.
 
 Try the full-device fixture in the same check. If the new end falls
 inside an allocated block, the shrink needs a new block to zero the
