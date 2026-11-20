@@ -1,4 +1,6 @@
 mod ownership;
+mod profile;
+mod schedule;
 mod target;
 
 use std::env;
@@ -7,7 +9,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -15,6 +17,7 @@ use io_journey::record::{decode, encode, DEMO_RECORDS};
 use libublk::ctrl::{UblkCtrl, UblkCtrlBuilder};
 use libublk::io::UblkDev;
 use libublk::{sys, UblkFlags};
+use schedule::Policy;
 use target::{Counts, LabDevice, DEVICE_BYTES, IO_BUFFER_BYTES, QUEUE_DEPTH};
 
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -23,7 +26,17 @@ const TAIL: &[u8] = b"volatile";
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments = env::args_os().skip(1).collect::<Vec<_>>();
     match arguments.as_slice() {
-        [verb, path] if verb == "serve" => serve(Path::new(path)),
+        [verb, path] if verb == "serve" => serve(Path::new(path), Policy::Fifo, None),
+        [verb, path, policy, output] if verb == "serve" => {
+            let policy = policy
+                .to_str()
+                .ok_or_else(|| invalid("invalid scheduling policy"))?;
+            serve(
+                Path::new(path),
+                Policy::parse(policy)?,
+                Some(PathBuf::from(output)),
+            )
+        }
         [verb, path, command] if verb == "control" => {
             let command = command
                 .to_str()
@@ -60,9 +73,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn serve(socket: &Path) -> Result<(), Box<dyn Error>> {
+fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), Box<dyn Error>> {
     let listener = UnixListener::bind(socket)?;
-    let state = Arc::new(Mutex::new(LabDevice::new()?));
+    let state = Arc::new(Mutex::new(LabDevice::new(profile)?));
     let ctrl = UblkCtrlBuilder::default()
         .name("io-journey")
         .id(-1)
@@ -101,7 +114,7 @@ fn serve(socket: &Path) -> Result<(), Box<dyn Error>> {
             Ok(())
         },
         move |qid, dev| {
-            if let Err(error) = target::run_queue(qid, dev, &worker_state) {
+            if let Err(error) = target::run_queue(qid, dev, &worker_state, policy) {
                 eprintln!("ublk queue failed: {error}");
             }
         },
@@ -144,27 +157,35 @@ fn control_loop(
             return Ok(());
         }
 
-        let counts = {
+        let reply = {
             let mut device = state
                 .lock()
                 .map_err(|_| io::Error::other("device lock is poisoned"))?;
             match command.trim() {
-                "stats" => Ok(device.counts()),
-                "checkpoint" => Ok(device.save_checkpoint()),
-                "cut" => device.cut(),
-                _ => Err(invalid("expected stats, checkpoint, cut, or stop")),
+                "stats" => Ok(count_line(device.counts())),
+                "checkpoint" => Ok(count_line(device.save_checkpoint())),
+                "cut" => device.cut().map(count_line),
+                "profile-start" => device.start_profile().map(|()| "profiling".into()),
+                "profile-save" => device.save_profile().map(|rows| rows.to_string()),
+                _ => Err(invalid("unknown ublk control command")),
             }
         };
-        match counts {
-            Ok(Counts {
-                reads,
-                writes,
-                flushes,
-            }) => writeln!(stream, "{reads} {writes} {flushes}")?,
+        match reply {
+            Ok(reply) => writeln!(stream, "{reply}")?,
             Err(error) => writeln!(stream, "error {error}")?,
         }
     }
     Err(io::Error::other("ublk control listener stopped"))
+}
+
+fn count_line(
+    Counts {
+        reads,
+        writes,
+        flushes,
+    }: Counts,
+) -> String {
+    format!("{reads} {writes} {flushes}")
 }
 
 fn send_control(socket: &Path, command: &str) -> io::Result<()> {

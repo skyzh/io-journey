@@ -1,14 +1,19 @@
-use std::cell::RefCell;
 use std::io;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Instant;
 
 use io_journey::ftl::{FlashImage, Ftl};
 use io_journey::nand::{Block, NandGeometry, BLOCK_BYTES};
 use io_journey::queue::{BlockQueue, Driver, Operation, Response, SubmitError};
 use io_journey::Trace;
-use libublk::io::{UblkDev, UblkQueue};
+use libublk::helpers::IoBuf;
+use libublk::io::{UblkDev, UblkIOCtx, UblkQueue};
 use libublk::{sys, BufDesc, BufDescList, UblkError, UblkIORes};
+
+use crate::profile::{Profile, Timing};
+use crate::schedule::{next_index, Arrival, Policy};
 
 pub const DEVICE_BYTES: usize = 32 * 1024 * 1024;
 pub const QUEUE_DEPTH: u16 = 8;
@@ -27,10 +32,11 @@ pub struct LabDevice {
     trace: Trace,
     counts: Counts,
     saved: Option<(Counts, FlashImage)>,
+    profile: Option<Profile>,
 }
 
 impl LabDevice {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(profile: Option<PathBuf>) -> io::Result<Self> {
         let geometry = NandGeometry::new(160, 64)?;
         let ftl = Ftl::with_geometry(DEVICE_BYTES / BLOCK_BYTES, geometry)?;
         Ok(Self {
@@ -38,7 +44,23 @@ impl LabDevice {
             trace: Vec::new(),
             counts: Counts::default(),
             saved: None,
+            profile: profile.map(Profile::new),
         })
+    }
+
+    pub fn start_profile(&mut self) -> io::Result<()> {
+        self.profile
+            .as_mut()
+            .ok_or_else(|| io::Error::other("server was started without profiling"))?
+            .start();
+        Ok(())
+    }
+
+    pub fn save_profile(&mut self) -> io::Result<usize> {
+        self.profile
+            .as_mut()
+            .ok_or_else(|| io::Error::other("server was started without profiling"))?
+            .save()
     }
 
     pub fn counts(&self) -> Counts {
@@ -67,6 +89,7 @@ impl LabDevice {
         iod: &sys::ublksrv_io_desc,
         buffer: &mut [u8],
     ) -> io::Result<i32> {
+        self.trace.clear();
         let op = iod.op_flags & 0xff;
         if op == sys::UBLK_IO_OP_FLUSH {
             let (id, _) = self.execute(Operation::Flush)?;
@@ -124,7 +147,6 @@ impl LabDevice {
     }
 
     fn execute(&mut self, op: Operation) -> io::Result<(u64, Response)> {
-        self.trace.clear();
         let id = self
             .queue
             .try_submit(op, &mut self.trace)
@@ -163,31 +185,108 @@ fn block_span(sector: u64, sectors: u32, capacity: usize) -> io::Result<(usize, 
     Ok((lba, blocks))
 }
 
-pub fn run_queue(qid: u16, dev: &UblkDev, state: &Mutex<LabDevice>) -> Result<(), UblkError> {
-    let buffers = RefCell::new(dev.alloc_queue_io_bufs());
-    let queue = {
-        let pinned = buffers.borrow();
-        UblkQueue::new(qid, dev)?
-            .submit_fetch_commands_unified(BufDescList::Slices(Some(&pinned)))?
+pub fn run_queue(
+    qid: u16,
+    dev: &UblkDev,
+    state: &Mutex<LabDevice>,
+    policy: Policy,
+) -> Result<(), UblkError> {
+    let mut buffers = dev.alloc_queue_io_bufs();
+    let queue = UblkQueue::new(qid, dev)?
+        .submit_fetch_commands_unified(BufDescList::Slices(Some(&buffers)))?;
+    let mut batch = Vec::with_capacity(usize::from(QUEUE_DEPTH));
+    let outcome = loop {
+        // This target submits only ublk fetch and commit commands. The raw
+        // callback also sees aborts that the library's IO callback filters.
+        let result = queue.flush_and_wake_io_tasks(
+            |user_data, cqe, is_last| {
+                visit_command(
+                    &mut batch,
+                    cqe.result(),
+                    is_last,
+                    || {
+                        let tag = UblkIOCtx::user_data_to_tag(user_data) as u16;
+                        assert!(queue.owns_tag(tag));
+                        let iod = queue.get_iod(tag);
+                        Arrival {
+                            tag,
+                            op: iod.op_flags & 0xff,
+                            sector: iod.start_sector,
+                            sectors: iod.nr_sectors,
+                            at: Instant::now(),
+                        }
+                    },
+                    |pending| service_batch(&queue, &mut buffers, state, policy, pending),
+                );
+            },
+            1,
+        );
+        match result {
+            Ok(_) => {}
+            Err(UblkError::QueueIsDown) => break Ok(()),
+            Err(error) => break Err(error),
+        }
     };
-    queue.wait_and_handle_io(|queue, tag, _| {
-        let mut pinned = buffers.borrow_mut();
-        let buffer = &mut pinned[usize::from(tag)];
+    for tag in queue.tags() {
+        queue.unregister_io_buf(tag);
+    }
+    outcome
+}
+
+fn visit_command(
+    batch: &mut Vec<Arrival>,
+    result: i32,
+    is_last: bool,
+    describe: impl FnOnce() -> Arrival,
+    dispatch: impl FnOnce(&mut Vec<Arrival>),
+) {
+    if result == sys::UBLK_IO_RES_OK as i32 {
+        batch.push(describe());
+    }
+    // libublk marks a batch containing an abort as stopping after the last
+    // callback. Commits queued after that update would be dropped.
+    if is_last {
+        dispatch(batch);
+    }
+}
+
+fn service_batch(
+    queue: &UblkQueue,
+    buffers: &mut [IoBuf<u8>],
+    state: &Mutex<LabDevice>,
+    policy: Policy,
+    batch: &mut Vec<Arrival>,
+) {
+    while !batch.is_empty() {
+        let index = next_index(policy, batch);
+        let arrival = batch.remove(index);
+        let tag = arrival.tag;
+        let buffer = &mut buffers[usize::from(tag)];
         let iod = queue.get_iod(tag);
         let result = match state.lock() {
-            Ok(mut device) => device.handle(tag, iod, buffer.as_mut_slice()),
-            Err(_) => Err(io::Error::other("device state lock is poisoned")),
-        };
-        let result = match result {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                eprintln!("ublk tag {tag} failed: {error}");
-                match error.kind() {
-                    io::ErrorKind::InvalidInput => -libc::EINVAL,
-                    io::ErrorKind::Unsupported => -libc::EOPNOTSUPP,
-                    _ => -libc::EIO,
+            Ok(mut device) => {
+                let device = &mut *device;
+                let started = Instant::now();
+                let result = linux_result(tag, device.handle(tag, iod, buffer.as_mut_slice()));
+                let service = started.elapsed();
+                if let Some(profile) = &mut device.profile {
+                    profile.record(
+                        Timing {
+                            tag,
+                            operation: arrival.operation(),
+                            sector: arrival.sector,
+                            sectors: arrival.sectors,
+                            wait_ns: started.duration_since(arrival.at).as_nanos(),
+                            service_ns: service.as_nanos(),
+                            result,
+                            advanced: index != 0,
+                        },
+                        &device.trace,
+                    );
                 }
+                result
             }
+            Err(_) => linux_result(tag, Err(io::Error::other("device state lock is poisoned"))),
         };
         if let Err(error) = queue.complete_io_cmd_unified(
             tag,
@@ -196,8 +295,21 @@ pub fn run_queue(qid: u16, dev: &UblkDev, state: &Mutex<LabDevice>) -> Result<()
         ) {
             eprintln!("could not complete ublk tag {tag}: {error}");
         }
-    });
-    Ok(())
+    }
+}
+
+fn linux_result(tag: u16, result: io::Result<i32>) -> i32 {
+    match result {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("ublk tag {tag} failed: {error}");
+            match error.kind() {
+                io::ErrorKind::InvalidInput => -libc::EINVAL,
+                io::ErrorKind::Unsupported => -libc::EOPNOTSUPP,
+                _ => -libc::EIO,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -213,5 +325,45 @@ mod tests {
                 io::ErrorKind::InvalidInput
             );
         }
+    }
+
+    #[test]
+    fn a_skipped_final_completion_queues_the_accepted_tag_before_stop() {
+        let mut batch = Vec::new();
+        let mut queued_commits = Vec::new();
+        let mut stopping = false;
+        for (result, is_last) in [
+            (sys::UBLK_IO_RES_OK as i32, false),
+            (sys::UBLK_IO_RES_ABORT, true),
+        ] {
+            visit_command(
+                &mut batch,
+                result,
+                is_last,
+                || {
+                    assert_eq!(result, sys::UBLK_IO_RES_OK as i32);
+                    Arrival {
+                        tag: 3,
+                        op: sys::UBLK_IO_OP_READ,
+                        sector: 0,
+                        sectors: 8,
+                        at: Instant::now(),
+                    }
+                },
+                |pending| {
+                    assert!(is_last);
+                    if !stopping {
+                        queued_commits.extend(pending.drain(..).map(|request| request.tag));
+                    }
+                },
+            );
+            if result == sys::UBLK_IO_RES_ABORT && is_last {
+                // Match libublk: it applies the abort after visiting the entries.
+                stopping = true;
+            }
+        }
+        assert!(stopping);
+        assert_eq!(queued_commits, [3]);
+        assert!(batch.is_empty());
     }
 }
