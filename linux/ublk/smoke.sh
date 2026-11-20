@@ -15,6 +15,18 @@ for ram_dir in /dev/shm /run; do
     [[ $(findmnt -n -o FSTYPE -T "$ram_dir") == tmpfs ]] || fail "$ram_dir must be tmpfs."
 done
 
+mode=ext4
+profile_args=()
+if (( $# != 0 )); then
+    [[ $# == 5 && "$1" == queue-case ]] || fail 'Use the queue-bench.sh entry for a benchmark.'
+    [[ "$2" == fifo || "$2" == read-first ]] || fail 'Invalid scheduling policy.'
+    [[ "$3" == 1 || "$3" == 8 ]] || fail 'Invalid benchmark depth.'
+    [[ "$4" == 4096 || "$4" == 16384 ]] || fail 'Invalid benchmark request size.'
+    [[ -d "$5" && $(findmnt -n -o FSTYPE -T "$5") == tmpfs ]] ||
+        fail 'Benchmark output must be in guest tmpfs.'
+    mode=queue-case
+fi
+
 run_dir=$(mktemp -d /dev/shm/io-journey-ublk.XXXXXX)
 mount_dir="$run_dir/mount"
 socket="$run_dir/control.sock"
@@ -24,11 +36,15 @@ server_pid=
 device_id=
 node_identity=
 device=
-mkdir "$mount_dir" "$run_dir/tmp"
-export CARGO_HOME="$run_dir/cargo"
-export CARGO_TARGET_DIR="$run_dir/target"
-export TMPDIR="$run_dir/tmp"
-export CARGO_INCREMENTAL=0
+trace_instance=
+mkdir "$mount_dir"
+source "$adapter_dir/build-env.sh"
+if [[ "$mode" == queue-case ]]; then
+    binary=$(realpath "${IO_JOURNEY_ADAPTER_BIN:?}")
+    [[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
+        fail 'Use an adapter binary from guest tmpfs.'
+    profile_args=("$2" "$5/server.tsv")
+fi
 
 shopt -s nullglob
 initial_devices=(/sys/class/block/ublkb*)
@@ -74,6 +90,10 @@ cleanup() {
     local status=$? cleanup_failed=0 stop_status=0
     trap - EXIT
     set +e
+    if [[ -n "$trace_instance" && -d "$trace_instance" ]]; then
+        printf '0\n' > "$trace_instance/tracing_on" || cleanup_failed=1
+        rmdir "$trace_instance" || cleanup_failed=1
+    fi
     if mountpoint -q "$mount_dir"; then
         if [[ -n "$device" && $(findmnt -n -o SOURCE -M "$mount_dir") == "$device" ]]; then
             umount "$mount_dir" || cleanup_failed=1
@@ -125,25 +145,10 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ -z "${LIBCLANG_PATH:-}" ]] && ! ldconfig -p | grep -F libclang >/dev/null; then
-    [[ $(dpkg-query -W -f='${db:Status-Status}' libllvm21 2>/dev/null) == installed ]] ||
-        fail 'Set LIBCLANG_PATH to an available libclang shared library directory.'
-    mkdir "$run_dir/clang"
-    chmod 0711 "$run_dir"
-    install -d -m 0700 -o _apt "$run_dir/debs"
-    (
-        cd "$run_dir/debs"
-        apt-get download libclang1-21
-        for archive in libclang1-21_*.deb; do
-            dpkg-deb -x "$archive" "$run_dir/clang"
-        done
-    )
-    chmod 0700 "$run_dir"
-    export LIBCLANG_PATH="$run_dir/clang/usr/lib/llvm-21/lib"
+if [[ "$mode" == ext4 ]]; then
+    build_adapter "$adapter_dir" "$run_dir"
 fi
-
-cargo build --locked --quiet --manifest-path "$adapter_dir/Cargo.toml"
-"$binary" serve "$socket" > "$log" 2>&1 &
+"$binary" serve "$socket" "${profile_args[@]}" > "$log" 2>&1 &
 server_pid=$!
 for attempt in {1..150}; do
     read_allocation
@@ -171,6 +176,12 @@ printf 'owned device %s uses one ublk queue, write-back cache and separate flush
 control() {
     "$binary" control "$socket" "$1"
 }
+
+if [[ "$mode" == queue-case ]]; then
+    source "$adapter_dir/queue-case.sh"
+    run_queue_case "$2" "$3" "$4" "$5"
+    exit 0
+fi
 
 mkfs.ext4 -q -F -b 4096 -m 0 -E nodiscard,lazy_itable_init=0,lazy_journal_init=0 "$device"
 mount -t ext4 "$device" "$mount_dir"

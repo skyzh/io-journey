@@ -47,3 +47,6 @@ ublk server stays running. It uses the checkpoint taken after the
 application's sync even when unmount sends more flushes. The guest keeps
 the flash images in process memory and all build files, logs, and adapter
 metadata on tmpfs.
+
+Use the [queue benchmark](QUEUE_BENCHMARK.md) to measure request size,
+depth, and a scheduling change on the same RAM-backed device.
