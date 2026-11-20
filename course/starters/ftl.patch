@@ -1,0 +1,12 @@
+--- a/src/ftl.rs
++++ b/src/ftl.rs
+@@ -145,7 +145,8 @@
+         let page = self.live.nand.erased_pages().next().expect("free page");
+         self.live.nand.program(page, data)?;
+         trace.push(format!("nand   program page {page}"));
+-        let previous = self.live.map[lba].replace(page);
++        // TODO: Publish this LBA's new page and retain its previous page for the trace.
++        let previous: Option<usize> = None;
+         if let Some(previous) = previous {
+             trace.push(format!(
+                 "ftl    map LBA {lba} -> page {page}, stale page {previous}"

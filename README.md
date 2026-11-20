@@ -41,6 +41,8 @@ app    read after torn program: ["first", "second"]
 demo   verified the acknowledged prefix after both cuts
 ```
 
+Continue with the [four userspace checkpoints](course/README.md).
+
 ## Follow a record
 
 - The application writes a length, a CRC-32, and the payload. Recovery reads
