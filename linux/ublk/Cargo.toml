@@ -1,0 +1,10 @@
+[package]
+name = "io-journey-ublk"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+io-journey = { path = "../.." }
+libc = "0.2"
+libublk = "=0.4.8"

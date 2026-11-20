@@ -41,7 +41,8 @@ app    read after torn program: ["first", "second"]
 demo   verified the acknowledged prefix after both cuts
 ```
 
-Continue with the [four userspace checkpoints](course/README.md).
+Continue with the [four userspace checkpoints](course/README.md) or run the
+[Linux ext4 lab](linux/ublk/README.md) on the same block device.
 
 ## Follow a record
 
@@ -101,6 +102,7 @@ The tear hook needs a page erased in both the live and durable images. If
 earlier unflushed writes leave no shared erased page, the hook reports a
 device error before programming any partial bytes.
 
-The course follow-ups cover metadata journaling and Linux integration through
-ublk, FUSE, and io_uring. The earlier NBD and `fio` pilot is available in Git
+The ublk lab connects ext4 to the Rust block device. The later course labs
+cover queue measurements, metadata journaling, FUSE, and io_uring.
+The earlier NBD and `fio` pilot is available in Git
 history at `073e7f4` ("Fix fio FLUSH and JSON evidence (#2)").

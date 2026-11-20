@@ -10,26 +10,26 @@ pub(crate) const LOGICAL_BLOCKS: usize = 8;
 
 /// The physical pages and mapping that survive a simulated cut.
 #[derive(Clone)]
-pub(crate) struct FlashImage {
+pub struct FlashImage {
     nand: Nand,
     map: Vec<Option<usize>>,
 }
 
 impl FlashImage {
-    pub(crate) fn physical_page(&self, page: usize) -> Option<&Block> {
+    pub fn physical_page(&self, page: usize) -> Option<&Block> {
         self.nand.read(page)
     }
 
-    pub(crate) fn mapped_page(&self, lba: usize) -> Option<usize> {
+    pub fn mapped_page(&self, lba: usize) -> Option<usize> {
         self.map.get(lba).copied().flatten()
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct TornProgram {
-    pub(crate) lba: usize,
-    pub(crate) page: usize,
-    pub(crate) bytes: usize,
+pub struct TornProgram {
+    pub lba: usize,
+    pub page: usize,
+    pub bytes: usize,
 }
 
 impl fmt::Display for TornProgram {
@@ -44,7 +44,7 @@ impl fmt::Display for TornProgram {
 
 impl std::error::Error for TornProgram {}
 
-pub(crate) struct Ftl {
+pub struct Ftl {
     live: FlashImage,
     durable: FlashImage,
     tear: Option<ProgramFault>,
@@ -56,13 +56,13 @@ struct ProgramFault {
 }
 
 impl Ftl {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let geometry =
             NandGeometry::new(ERASE_BLOCKS, PAGES_PER_ERASE_BLOCK).expect("demo geometry");
         Self::with_geometry(LOGICAL_BLOCKS, geometry).expect("demo device")
     }
 
-    pub(crate) fn with_geometry(logical_blocks: usize, geometry: NandGeometry) -> io::Result<Self> {
+    pub fn with_geometry(logical_blocks: usize, geometry: NandGeometry) -> io::Result<Self> {
         // At the reserve, at least one occupied page must be stale.
         if !(1..geometry.physical_pages() - geometry.pages_per_erase_block())
             .contains(&logical_blocks)
@@ -82,7 +82,7 @@ impl Ftl {
         }))
     }
 
-    pub(crate) fn open(mut image: FlashImage, trace: &mut Trace) -> io::Result<Self> {
+    pub fn open(mut image: FlashImage, trace: &mut Trace) -> io::Result<Self> {
         // An interrupted program can spend one of the reserved pages.
         // Reclaim before cloning so both copies have room for the next cut.
         if image.nand.erased_pages().count() < image.nand.geometry().pages_per_erase_block() {
@@ -163,6 +163,10 @@ impl Ftl {
 
     pub(crate) fn power_cut(self) -> FlashImage {
         self.durable
+    }
+
+    pub(crate) fn checkpoint(&self) -> FlashImage {
+        self.durable.clone()
     }
 
     pub(crate) fn arm_torn_write(&mut self, lba: usize, prefix_bytes: usize) -> io::Result<()> {
