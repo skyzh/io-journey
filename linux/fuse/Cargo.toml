@@ -1,0 +1,10 @@
+[package]
+name = "io-journey-fuse"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+fuser = { version = "=0.16.0", default-features = false, features = ["abi-7-31"] }
+io-journey = { path = "../.." }
+libc = "0.2"
