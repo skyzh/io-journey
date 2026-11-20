@@ -1,3 +1,4 @@
+pub mod dispatch;
 pub mod ftl;
 pub mod journal_fs;
 pub mod nand;

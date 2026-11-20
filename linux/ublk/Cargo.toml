@@ -6,6 +6,7 @@ publish = false
 
 [features]
 learner = ["io-journey/learner"]
+learner-queue = ["learner", "io-journey/learner-queue"]
 
 [dependencies]
 io-journey = { path = "../.." }

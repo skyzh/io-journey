@@ -6,6 +6,10 @@ use crate::ftl::{FlashImage, Ftl};
 use crate::nand::Block;
 use crate::Trace;
 
+#[cfg_attr(feature = "learner-queue", path = "../course/learner/queue.rs")]
+#[cfg_attr(not(feature = "learner-queue"), path = "queue/reference.rs")]
+mod behavior;
+
 pub type RequestId = u64;
 
 #[derive(Debug)]
@@ -183,13 +187,10 @@ impl BlockQueue {
         }
         self.require_driver(submission.driver)
             .map_err(SubmitError::Rejected)?;
-        if self.pending.len() == self.depth.get() {
+        if !self.has_room() {
             return Err(SubmitError::Full(submission));
         }
-        let id = self.next_id;
-        self.next_id = id
-            .checked_add(1)
-            .ok_or_else(|| SubmitError::Rejected(io::Error::other("request IDs exhausted")))?;
+        let id = self.allocate_id()?;
         trace.push(format!(
             "queue  submit #{id} {} ({}/{})",
             submission.operation.label(),
@@ -222,7 +223,7 @@ impl BlockQueue {
         trace: &mut Trace,
     ) -> io::Result<Option<Completion>> {
         self.require_driver(driver)?;
-        let Some(request) = self.pending.pop_front() else {
+        let Some(request) = self.take_next_request() else {
             return Ok(None);
         };
         let id = request.id;
@@ -263,7 +264,7 @@ impl BlockQueue {
                 Ok(Response::Done)
             }
             Operation::Flush => {
-                self.ftl.flush(trace);
+                self.flush_image(trace);
                 Ok(Response::Done)
             }
         }
@@ -318,6 +319,57 @@ mod tests {
     use crate::ftl::{TornProgram, LOGICAL_BLOCKS};
     use crate::nand::BLOCK_BYTES;
 
+    #[test]
+    fn admission_returns_the_request_when_all_slots_are_occupied() {
+        let mut queue = BlockQueue::new(Ftl::new(), NonZeroUsize::MIN);
+        let mut trace = Vec::new();
+        queue
+            .try_submit(Operation::Read { lba: 0, blocks: 1 }, &mut trace)
+            .unwrap();
+        let result = queue.try_submit(Operation::Read { lba: 1, blocks: 1 }, &mut trace);
+        assert!(matches!(
+            result,
+            Err(SubmitError::Full(Submission {
+                operation: Operation::Read { lba: 1, blocks: 1 },
+                driver: Driver::Explicit
+            }))
+        ));
+        assert_eq!(queue.pending.len(), 1);
+        assert_eq!(trace.len(), 1, "admission leaves queued work unexecuted");
+    }
+
+    #[test]
+    fn accepted_requests_get_distinct_ordered_completions() {
+        let mut queue = BlockQueue::new(Ftl::new(), NonZeroUsize::new(2).unwrap());
+        let mut trace = Vec::new();
+        let first = queue
+            .try_submit(Operation::Read { lba: 0, blocks: 1 }, &mut trace)
+            .unwrap();
+        let second = queue
+            .try_submit(Operation::Read { lba: 1, blocks: 1 }, &mut trace)
+            .unwrap();
+        assert_eq!(second, first + 1);
+        for expected in [first, second] {
+            let completion = queue
+                .complete_next(Driver::Explicit, &mut trace)
+                .unwrap()
+                .unwrap();
+            assert_eq!(completion.id, expected);
+            assert!(completion.result.is_ok());
+        }
+        assert!(queue
+            .complete_next(Driver::Explicit, &mut trace)
+            .unwrap()
+            .is_none());
+        queue.next_id = RequestId::MAX;
+        let trace_before = trace.len();
+        let rejected = queue.try_submit(Operation::Read { lba: 0, blocks: 1 }, &mut trace);
+        assert!(matches!(rejected, Err(SubmitError::Rejected(_))));
+        assert_eq!(queue.next_id, RequestId::MAX);
+        assert!(queue.pending.is_empty());
+        assert_eq!(trace.len(), trace_before);
+    }
+
     fn write_request(lba: usize, values: &[u8]) -> Operation {
         Operation::Write {
             lba,
@@ -325,6 +377,17 @@ mod tests {
                 .iter()
                 .map(|&byte| Box::new([byte; BLOCK_BYTES]))
                 .collect(),
+        }
+    }
+
+    fn check_block(lba: usize, block: &[u8; BLOCK_BYTES], expected: u8) {
+        if let Some((offset, byte)) = block
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|&(_, byte)| byte != expected)
+        {
+            panic!("LBA {lba} byte {offset} expected {expected:#04x}, got {byte:#04x}");
         }
     }
 
@@ -359,16 +422,16 @@ mod tests {
             assert!(matches!(completion.result.unwrap(), Response::Done));
         }
         let blocks = queue.read_range(0, 3, &mut trace).unwrap();
-        for (block, byte) in blocks.iter().zip([4, 5, 3]) {
-            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        for (lba, (block, byte)) in blocks.iter().zip([4, 5, 3]).enumerate() {
+            check_block(lba, block, byte);
         }
 
         let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
         let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
         let blocks = reopened.read_range(0, 3, &mut trace).unwrap();
         assert_eq!(blocks.len(), 3);
-        for (block, byte) in blocks.iter().zip([1, 2, 3]) {
-            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        for (lba, (block, byte)) in blocks.iter().zip([1, 2, 3]).enumerate() {
+            check_block(lba, block, byte);
         }
         assert!(trace.iter().any(|line| line.contains("split #1 into 3")));
     }
@@ -478,7 +541,7 @@ mod tests {
 
         let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
         let mut reopened = BlockQueue::new(ftl, depth);
-        assert_eq!(*reopened.read(2, &mut trace).unwrap(), [0x73; BLOCK_BYTES]);
+        check_block(2, &reopened.read(2, &mut trace).unwrap(), 0x73);
     }
 
     #[test]
@@ -514,7 +577,7 @@ mod tests {
                 .lba,
             1
         );
-        assert_eq!(*queue.ftl.read(0, &mut trace).unwrap(), [2; BLOCK_BYTES]);
+        check_block(0, &queue.ftl.read(0, &mut trace).unwrap(), 2);
         for id in [flush, later] {
             let completion = queue
                 .complete_next(Driver::Explicit, &mut trace)
@@ -539,8 +602,8 @@ mod tests {
         let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
         let blocks = reopened.read_range(0, 3, &mut trace).unwrap();
         assert_eq!(blocks.len(), 3);
-        for (block, byte) in blocks.iter().zip([1, 1, 0]) {
-            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        for (lba, (block, byte)) in blocks.iter().zip([1, 1, 0]).enumerate() {
+            check_block(lba, block, byte);
         }
     }
 }
