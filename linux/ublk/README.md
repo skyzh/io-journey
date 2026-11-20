@@ -21,8 +21,9 @@ it extracts Ubuntu's matching libclang package into the temporary directory.
 The userspace demo and learner checkpoints still build offline from the
 root crate.
 
-The script checks the allocated device's ID, server PID, geometry, and cache
-attributes before formatting it. The 32 MiB device presents 4 KiB logical
+The script checks the allocated device's ID, character-node identity, server
+PID, and run marker before formatting it. It also checks the geometry and
+cache attributes. The 32 MiB device presents 4 KiB logical
 blocks and a write-back cache with `fua=0`. Linux sends separate flush requests.
 Each successful flush publishes the FTL image in memory. [Linux ublk](https://docs.kernel.org/block/ublk.html) · [Linux cache flush and FUA](https://docs.kernel.org/block/writeback_cache_control.html)
 
@@ -36,8 +37,10 @@ Look for these events in the output.
 4. The script unmounts ext4, invalidates the kernel block cache, and reopens
    the captured checkpoint. The read-only remount reads the reopened device
    and verifies only `first` and `second` with their checksums.
-5. The script removes the lab device and confirms the mount and device nodes
-   are gone.
+5. The script reaps the server and verifies that the mount, both device
+   nodes, and runtime metadata are gone. If the socket stop fails, it
+   checks the original allocation and run marker before deleting an
+   orphaned device after the server exits.
 
 The simulated cut replaces the Rust block device's live state while the
 ublk server stays running. It uses the checkpoint taken after the

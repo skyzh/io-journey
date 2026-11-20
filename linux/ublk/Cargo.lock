@@ -401,6 +401,7 @@ dependencies = [
  "io-journey",
  "libc",
  "libublk",
+ "serde_json",
 ]
 
 [[package]]

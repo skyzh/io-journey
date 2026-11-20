@@ -1,3 +1,4 @@
+mod ownership;
 mod target;
 
 use std::env;
@@ -8,7 +9,7 @@ use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use io_journey::record::{decode, encode, DEMO_RECORDS};
 use libublk::ctrl::{UblkCtrl, UblkCtrlBuilder};
@@ -29,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .ok_or_else(|| invalid("invalid control command"))?;
             Ok(send_control(Path::new(path), command)?)
         }
-        [verb, id, pid] if verb == "check-owned" || verb == "remove-owned" => {
+        [verb, id, pid, identity, token] if verb == "check-owned" || verb == "remove-owned" => {
             let id = id
                 .to_str()
                 .ok_or_else(|| invalid("invalid device ID"))?
@@ -38,11 +39,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .to_str()
                 .ok_or_else(|| invalid("invalid server PID"))?
                 .parse()?;
-            let ctrl = owned_device(id, pid)?;
+            let identity = identity
+                .to_str()
+                .ok_or_else(|| invalid("invalid device identity"))?;
+            let token = token
+                .to_str()
+                .ok_or_else(|| invalid("invalid ownership marker"))?;
             if verb == "remove-owned" {
-                ctrl.kill_dev()?;
+                ownership::remove_after_reap(id, pid, identity, token)
+            } else {
+                ownership::check_running(id, pid, identity, token)
             }
-            Ok(())
         }
         [verb, mount] if verb == "append" => Ok(append_records(Path::new(mount))?),
         [verb, mount] if verb == "tail" => Ok(append_tail(Path::new(mount))?),
@@ -65,17 +72,32 @@ fn serve(socket: &Path) -> Result<(), Box<dyn Error>> {
         .dev_flags(UblkFlags::UBLK_DEV_F_ADD_DEV)
         .build()?;
     let id = ctrl.dev_info().dev_id;
-    println!("allocated {id} {}", std::process::id());
+    let deadline = Instant::now() + CONTROL_TIMEOUT;
+    let identity = loop {
+        if let Some(identity) = ownership::character_identity(id)? {
+            break identity;
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::other("allocated ublk character node is missing").into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let token = socket
+        .to_str()
+        .ok_or_else(|| invalid("invalid control path"))?
+        .to_owned();
+    println!("allocated {id} {} {identity}", std::process::id());
     io::stdout().flush()?;
     let worker_state = state.clone();
     let outcome = Arc::new(Mutex::new(None));
     let listener_outcome = outcome.clone();
 
     ctrl.run_target(
-        |dev: &mut UblkDev| {
+        move |dev: &mut UblkDev| {
             dev.set_default_params(DEVICE_BYTES as u64);
             dev.tgt.params.basic.logical_bs_shift = 12;
             dev.tgt.params.basic.attrs = sys::UBLK_ATTR_VOLATILE_CACHE;
+            dev.set_target_json(serde_json::Value::String(token));
             Ok(())
         },
         move |qid, dev| {
@@ -161,18 +183,6 @@ fn send_control(socket: &Path, command: &str) -> io::Result<()> {
     }
     print!("{reply}");
     Ok(())
-}
-
-fn owned_device(id: i32, pid: i32) -> Result<UblkCtrl, Box<dyn Error>> {
-    if id < 0 || pid <= 0 {
-        return Err(invalid("expected the allocated device ID and server PID").into());
-    }
-    let ctrl = UblkCtrl::new_simple(id)?;
-    ctrl.read_dev_info()?;
-    if ctrl.dev_info().ublksrv_pid != pid {
-        return Err(invalid("ublk device is owned by a different server").into());
-    }
-    Ok(ctrl)
 }
 
 fn append_records(mount: &Path) -> io::Result<()> {

@@ -8,3 +8,4 @@ publish = false
 io-journey = { path = "../.." }
 libc = "0.2"
 libublk = "=0.4.8"
+serde_json = "1"

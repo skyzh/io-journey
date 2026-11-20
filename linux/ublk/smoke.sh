@@ -22,6 +22,7 @@ log="$run_dir/server.log"
 binary="$run_dir/target/debug/io-journey-ublk"
 server_pid=
 device_id=
+node_identity=
 device=
 mkdir "$mount_dir" "$run_dir/tmp"
 export CARGO_HOME="$run_dir/cargo"
@@ -32,14 +33,45 @@ export CARGO_INCREMENTAL=0
 shopt -s nullglob
 initial_devices=(/sys/class/block/ublkb*)
 
-allocated_id() {
+read_allocation() {
     if [[ -f "$log" ]]; then
-        awk -v pid="$server_pid" '$1 == "allocated" && $2 ~ /^[0-9]+$/ && $3 == pid {print $2; exit}' "$log"
+        local allocation
+        allocation=$(awk -v pid="$server_pid" '
+            $1 == "allocated" && $2 ~ /^[0-9]+$/ && $3 == pid &&
+            $4 ~ /^[0-9]+:[0-9]+:[0-9]+$/ {print; exit}
+        ' "$log")
+        read -r _ device_id _ node_identity <<< "$allocation"
     fi
 }
 
+server_exited() {
+    [[ ! -d "/proc/$server_pid" ]] ||
+        grep -Eq '^State:[[:space:]]+Z' "/proc/$server_pid/status" 2>/dev/null
+}
+
+reap_server() {
+    local attempt
+    for attempt in {1..50}; do
+        if server_exited; then
+            wait "$server_pid" 2>/dev/null || true
+            return 0
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
+device_remains() {
+    [[ -n "$device_id" ]] || return 1
+    local metadata
+    printf -v metadata '/run/ublksrvd/%04d.json' "$device_id"
+    [[ -e "/sys/class/block/ublkb$device_id" || -e "/dev/ublkb$device_id" ||
+       -e "/sys/class/ublk-char/ublkc$device_id" || -e "/dev/ublkc$device_id" ||
+       -e "$metadata" || -L "$metadata" ]]
+}
+
 cleanup() {
-    local status=$? cleanup_failed=0
+    local status=$? cleanup_failed=0 stop_status=0
     trap - EXIT
     set +e
     if mountpoint -q "$mount_dir"; then
@@ -49,40 +81,42 @@ cleanup() {
             cleanup_failed=1
         fi
     fi
-    if [[ -n "$server_pid" ]]; then
+    if [[ -n "$server_pid" ]] && ! mountpoint -q "$mount_dir"; then
         if [[ -z "$device_id" ]]; then
-            device_id=$(allocated_id)
+            read_allocation
         fi
-        if kill -0 "$server_pid" 2>/dev/null; then
-            if ! timeout 7 "$binary" control "$socket" stop > "$run_dir/stop.log" 2>&1; then
-                if [[ -n "$device_id" ]]; then
-                    timeout 7 "$binary" remove-owned "$device_id" "$server_pid" >> "$run_dir/stop.log" 2>&1
+        if ! server_exited; then
+            timeout 7 "$binary" control "$socket" stop > "$run_dir/stop.log" 2>&1 || stop_status=$?
+            if (( stop_status != 0 )); then
+                printf 'socket stop failed. Reaping the owned server before deletion\n'
+                if [[ $(readlink "/proc/$server_pid/exe") == "$binary" ]]; then
+                    kill -TERM "$server_pid" || cleanup_failed=1
                 fi
-                cleanup_failed=1
+                if (( stop_status == 124 )); then cleanup_failed=1; fi
             fi
         fi
-        for attempt in {1..30}; do
-            if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
-            sleep 0.1
-        done
-        if kill -0 "$server_pid" 2>/dev/null; then
-            kill -TERM "$server_pid"
+        if reap_server; then
+            if device_remains; then
+                if timeout 7 "$binary" remove-owned "$device_id" "$server_pid" "$node_identity" "$socket" >> "$run_dir/stop.log" 2>&1; then
+                    printf 'deleted the run-owned ublk device after reaping its server\n'
+                else
+                    cleanup_failed=1
+                fi
+            fi
+        else
             cleanup_failed=1
         fi
-        wait "$server_pid" || cleanup_failed=1
     fi
-    if [[ -n "$device_id" && ( -e "/sys/class/block/ublkb$device_id" ||
-                                -e "/dev/ublkb$device_id" || -e "/dev/ublkc$device_id" ||
-                                -e "/run/ublksrvd/$device_id.json" ) ]]; then
-        cleanup_failed=1
-    fi
+    if device_remains; then cleanup_failed=1; fi
     if mountpoint -q "$mount_dir"; then cleanup_failed=1; fi
+    if [[ -n "$server_pid" && -d "/proc/$server_pid" ]]; then cleanup_failed=1; fi
     if (( status == 0 && cleanup_failed == 0 )); then
-        printf 'verified cleanup of ublk device %s and lab mount\n' "$device_id"
+        printf 'verified cleanup of ublk device %s, metadata, mount, and server\n' "$device_id"
         rm -rf -- "$run_dir"
     else
         printf 'ublk smoke failed (cleanup status %s). Guest diagnostics at %s\n' "$cleanup_failed" "$run_dir" >&2
         if [[ -f "$log" ]]; then tail -n 20 "$log" >&2; fi
+        if [[ -f "$run_dir/stop.log" ]]; then tail -n 10 "$run_dir/stop.log" >&2; fi
         if (( status == 0 )); then status=1; fi
     fi
     exit "$status"
@@ -112,7 +146,7 @@ cargo build --locked --quiet --manifest-path "$adapter_dir/Cargo.toml"
 "$binary" serve "$socket" > "$log" 2>&1 &
 server_pid=$!
 for attempt in {1..150}; do
-    device_id=$(allocated_id)
+    read_allocation
     if [[ -n "$device_id" && -b "/dev/ublkb$device_id" ]] &&
         grep -qxF "ready $device_id" "$log"; then
         device="/dev/ublkb$device_id"
@@ -126,7 +160,7 @@ sys_block="/sys/class/block/ublkb$device_id"
 for prior in "${initial_devices[@]}"; do
     [[ "$prior" != "$sys_block" ]] || fail 'The allocated device was present before this run.'
 done
-"$binary" check-owned "$device_id" "$server_pid"
+"$binary" check-owned "$device_id" "$server_pid" "$node_identity" "$socket"
 [[ $(blockdev --getsize64 "$device") == 33554432 &&
    $(blockdev --getss "$device") == 4096 ]] || fail 'The allocated device has unexpected geometry.'
 ! findmnt -rn -S "$device" >/dev/null || fail 'The allocated device is already mounted.'
