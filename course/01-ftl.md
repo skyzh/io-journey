@@ -26,6 +26,7 @@ learner starter.
 Implement `publish_mapping` so the LBA points to the newly programmed page
 and the method returns its earlier location, if any. The caller has
 already checked the LBA and programmed the new page successfully.
+Use `map.replace(lba, page)` to record the change.
 
 Run `./course/learner.sh map` again. An overwrite should change the mapping
 and expose the new bytes while the old physical page stays programmed.
@@ -46,6 +47,7 @@ no LBA pointing to it and can be reclaimed with the rest of the block.
 Use the supplied [`Nand`](../src/nand.rs) methods on `self.nand`.
 `erased_pages` lists destinations, `read` gives the source, and `program`
 takes an owned `Block`. Clone the source before programming the destination.
+Use `map.replace(lba, destination)` to record a relocated page.
 Keep the `_trace` parameter in the function signature. You can leave it
 unused or use it to record relocations for debugging.
 

@@ -1,6 +1,9 @@
 use std::io;
 use std::ops::Range;
 
+#[cfg(feature = "indexed-ftl")]
+use crate::free_space::FreePages;
+
 pub const BLOCK_BYTES: usize = 4096;
 pub(crate) const PAGES_PER_ERASE_BLOCK: usize = 4;
 pub(crate) const ERASE_BLOCKS: usize = 4;
@@ -50,6 +53,8 @@ impl NandGeometry {
 pub(crate) struct Nand {
     geometry: NandGeometry,
     pages: Vec<Option<Block>>,
+    #[cfg(feature = "indexed-ftl")]
+    free: FreePages,
 }
 
 impl Nand {
@@ -59,7 +64,12 @@ impl Nand {
             .try_reserve_exact(geometry.physical_pages)
             .map_err(io::Error::other)?;
         pages.resize(geometry.physical_pages, None);
-        Ok(Self { geometry, pages })
+        Ok(Self {
+            geometry,
+            pages,
+            #[cfg(feature = "indexed-ftl")]
+            free: FreePages::new(geometry)?,
+        })
     }
 
     pub(crate) fn geometry(&self) -> NandGeometry {
@@ -70,11 +80,40 @@ impl Nand {
         self.pages.get(page)?.as_ref()
     }
 
+    #[cfg(not(feature = "indexed-ftl"))]
     pub(crate) fn erased_pages(&self) -> impl Iterator<Item = usize> + '_ {
         self.pages
             .iter()
             .enumerate()
             .filter_map(|(page, data)| data.is_none().then_some(page))
+    }
+
+    #[cfg(feature = "indexed-ftl")]
+    pub(crate) fn erased_pages(&self) -> impl Iterator<Item = usize> + '_ {
+        self.free.iter()
+    }
+
+    #[cfg(not(feature = "indexed-ftl"))]
+    pub(crate) fn free_count(&self) -> usize {
+        self.erased_pages().count()
+    }
+
+    #[cfg(feature = "indexed-ftl")]
+    pub(crate) fn free_count(&self) -> usize {
+        self.free.count()
+    }
+
+    #[cfg(not(feature = "indexed-ftl"))]
+    pub(crate) fn programmed_in(&self, block: usize) -> usize {
+        self.geometry
+            .erase_block_pages(block)
+            .filter(|&page| self.read(page).is_some())
+            .count()
+    }
+
+    #[cfg(feature = "indexed-ftl")]
+    pub(crate) fn programmed_in(&self, block: usize) -> usize {
+        self.free.used_in(block)
     }
 
     pub(crate) fn program(&mut self, page: usize, data: Block) -> io::Result<()> {
@@ -87,11 +126,17 @@ impl Nand {
             ));
         }
         *slot = Some(data);
+        #[cfg(feature = "indexed-ftl")]
+        self.free
+            .record_program(page, page / self.geometry.pages_per_erase_block());
         Ok(())
     }
 
     pub(crate) fn erase(&mut self, erase_block: usize) {
-        self.pages[self.geometry.erase_block_pages(erase_block)].fill(None);
+        let pages = self.geometry.erase_block_pages(erase_block);
+        self.pages[pages.clone()].fill(None);
+        #[cfg(feature = "indexed-ftl")]
+        self.free.record_erase(erase_block, pages);
     }
 }
 

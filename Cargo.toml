@@ -9,5 +9,7 @@ learner = []
 learner-queue = ["learner"]
 learner-journal = ["learner-queue"]
 learner-append = ["learner-journal"]
+indexed-ftl = []
+learner-index = ["learner", "indexed-ftl"]
 
 [dependencies]
