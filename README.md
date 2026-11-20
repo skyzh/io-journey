@@ -106,5 +106,7 @@ The [ublk lab](linux/ublk/README.md) connects ext4 to the Rust block device.
 The [FUSE lab](linux/fuse/README.md) uses the same device with a root
 directory and a metadata journal. It shows how file sync and directory
 sync affect recovery.
+The [append benchmark](linux/append/README.md) compares synchronous and
+io_uring writes with the same commit policy on both filesystems.
 The earlier NBD and `fio` pilot is available in Git
 history at `073e7f4` ("Fix fio FLUSH and JSON evidence (#2)").

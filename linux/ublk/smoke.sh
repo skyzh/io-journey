@@ -16,6 +16,7 @@ for ram_dir in /dev/shm /run; do
 done
 
 mode=ext4
+mount_filesystem=ext4
 profile_args=()
 if (( $# != 0 )); then
     mode=$1
@@ -33,6 +34,15 @@ if (( $# != 0 )); then
             fuse_binary=$(realpath -- "$2")
             [[ -x "$fuse_binary" && $(findmnt -n -o FSTYPE -T "$fuse_binary") == tmpfs ]] ||
                 fail 'Use a FUSE binary from guest tmpfs.'
+            mount_filesystem=fuse
+            ;;
+        append-case)
+            [[ $# == 5 && ( "$2" == ext4 || "$2" == fuse ) &&
+               ( "$3" == sync || "$3" == uring ) && ( "$4" == 4 || "$4" == 32 ) ]] ||
+                fail 'Use linux/append/benchmark.sh for the append benchmark.'
+            [[ -d "$5" && $(findmnt -n -o FSTYPE -T "$5") == tmpfs ]] ||
+                fail 'Append benchmark output must be in guest tmpfs.'
+            mount_filesystem=$2
             ;;
         *)
             fail 'Unknown lab workload.'
@@ -42,6 +52,7 @@ fi
 
 run_dir=$(mktemp -d /dev/shm/io-journey-ublk.XXXXXX)
 mount_dir="$run_dir/mount"
+mount_name="${run_dir##*/}"
 socket="$run_dir/control.sock"
 log="$run_dir/server.log"
 binary="$run_dir/target/debug/io-journey-ublk"
@@ -52,10 +63,16 @@ device=
 trace_instance=
 mkdir "$mount_dir"
 source "$adapter_dir/build-env.sh"
-if [[ "$mode" == queue-case ]]; then
+source "$adapter_dir/cleanup.sh"
+if [[ "$mount_filesystem" == fuse ]]; then
+    source "$adapter_dir/../fuse/mount.sh"
+fi
+if [[ "$mode" == queue-case || "$mode" == append-case ]]; then
     binary=$(realpath "${IO_JOURNEY_ADAPTER_BIN:?}")
     [[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
         fail 'Use an adapter binary from guest tmpfs.'
+fi
+if [[ "$mode" == queue-case ]]; then
     profile_args=("$2" "$5/server.tsv")
 fi
 
@@ -99,66 +116,11 @@ device_remains() {
        -e "$metadata" || -L "$metadata" ]]
 }
 
-cleanup() {
-    local status=$? cleanup_failed=0 stop_status=0
-    trap - EXIT
-    set +e
-    if [[ -n "$trace_instance" && -d "$trace_instance" ]]; then
-        printf '0\n' > "$trace_instance/tracing_on" || cleanup_failed=1
-        rmdir "$trace_instance" || cleanup_failed=1
-    fi
-    if mountpoint -q "$mount_dir"; then
-        if [[ -n "$device" && $(findmnt -n -o SOURCE -M "$mount_dir") == "$device" ]]; then
-            umount "$mount_dir" || cleanup_failed=1
-        else
-            cleanup_failed=1
-        fi
-    fi
-    if [[ -n "$server_pid" ]] && ! mountpoint -q "$mount_dir"; then
-        if [[ -z "$device_id" ]]; then
-            read_allocation
-        fi
-        if ! server_exited; then
-            timeout 7 "$binary" control "$socket" stop > "$run_dir/stop.log" 2>&1 || stop_status=$?
-            if (( stop_status != 0 )); then
-                printf 'socket stop failed. Reaping the owned server before deletion\n'
-                if [[ $(readlink "/proc/$server_pid/exe") == "$binary" ]]; then
-                    kill -TERM "$server_pid" || cleanup_failed=1
-                fi
-                if (( stop_status == 124 )); then cleanup_failed=1; fi
-            fi
-        fi
-        if reap_server; then
-            if device_remains; then
-                if timeout 7 "$binary" remove-owned "$device_id" "$server_pid" "$node_identity" "$socket" >> "$run_dir/stop.log" 2>&1; then
-                    printf 'deleted the run-owned ublk device after reaping its server\n'
-                else
-                    cleanup_failed=1
-                fi
-            fi
-        else
-            cleanup_failed=1
-        fi
-    fi
-    if device_remains; then cleanup_failed=1; fi
-    if mountpoint -q "$mount_dir"; then cleanup_failed=1; fi
-    if [[ -n "$server_pid" && -d "/proc/$server_pid" ]]; then cleanup_failed=1; fi
-    if (( status == 0 && cleanup_failed == 0 )); then
-        printf 'verified cleanup of ublk device %s, metadata, mount, and server\n' "$device_id"
-        rm -rf -- "$run_dir"
-    else
-        printf 'ublk smoke failed (cleanup status %s). Guest diagnostics at %s\n' "$cleanup_failed" "$run_dir" >&2
-        if [[ -f "$log" ]]; then tail -n 20 "$log" >&2; fi
-        if [[ -f "$run_dir/stop.log" ]]; then tail -n 10 "$run_dir/stop.log" >&2; fi
-        if (( status == 0 )); then status=1; fi
-    fi
-    exit "$status"
-}
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ "$mode" != queue-case ]]; then
+if [[ "$mode" == ext4 || "$mode" == fuse-case ]]; then
     build_adapter "$adapter_dir" "$run_dir"
 fi
 "$binary" serve "$socket" "${profile_args[@]}" > "$log" 2>&1 &
@@ -196,7 +158,16 @@ if [[ "$mode" == queue-case ]]; then
     exit 0
 fi
 if [[ "$mode" == fuse-case ]]; then
-    bash "$adapter_dir/../fuse/workload.sh" "$fuse_binary" "$binary" "$socket" "$server_pid" "$node_identity" "$device_id"
+    bash "$adapter_dir/../fuse/workload.sh" "$fuse_binary" "$binary" "$socket" "$server_pid" \
+        "$node_identity" "$device_id" "$mount_dir" "$mount_name"
+    exit 0
+fi
+if [[ "$mode" == append-case ]]; then
+    udevadm info --wait-for-initialization=10 --query=name --name="$device" >/dev/null
+    udevadm settle --timeout=10
+    udevadm lock --device="$device" --timeout=10 -- bash "$adapter_dir/../append/case.sh" \
+        "$2" "$3" "$4" "$5" "$binary" "$socket" "$server_pid" "$node_identity" "$device_id" \
+        "$mount_dir" "$mount_name"
     exit 0
 fi
 
