@@ -141,6 +141,16 @@ impl LabDevice {
                 .map(|block| Box::new(block.try_into().expect("whole block")))
                 .collect::<Vec<Block>>();
             self.execute(Operation::Write { lba, data })?;
+            #[cfg(feature = "learner")]
+            if self.counts.writes == 0 {
+                if let Some(event) = self
+                    .trace
+                    .iter()
+                    .find(|event| event.starts_with("ftl    map LBA "))
+                {
+                    eprintln!("learner {event}");
+                }
+            }
             self.counts.writes += 1;
         }
         Ok(bytes as i32)

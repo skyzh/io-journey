@@ -18,9 +18,14 @@ done
 mode=ext4
 mount_filesystem=ext4
 profile_args=()
+build_args=()
 if (( $# != 0 )); then
     mode=$1
     case "$mode" in
+        learner)
+            [[ $# == 1 ]] || fail 'Use smoke.sh learner from your course checkout.'
+            build_args=(--features learner)
+            ;;
         queue-case)
             [[ $# == 5 ]] || fail 'Use queue-bench.sh for a benchmark.'
             [[ "$2" == fifo || "$2" == read-first ]] || fail 'Invalid scheduling policy.'
@@ -121,8 +126,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ "$mode" == ext4 || "$mode" == fuse-case ]]; then
-    build_adapter "$adapter_dir" "$run_dir"
+if [[ "$mode" == ext4 || "$mode" == fuse-case || "$mode" == learner ]]; then
+    build_adapter "$adapter_dir" "$run_dir" "${build_args[@]}"
 fi
 "$binary" serve "$socket" "${profile_args[@]}" > "$log" 2>&1 &
 server_pid=$!
@@ -177,6 +182,9 @@ mount -t ext4 "$device" "$mount_dir"
 before=$(control stats)
 read -r _ before_writes before_flushes <<< "$before"
 "$binary" append "$mount_dir"
+if [[ "$mode" == learner ]]; then
+    grep -m 1 '^learner ftl    map LBA ' "$log" || fail 'The learner FTL did not report a page mapping.'
+fi
 saved=$(control checkpoint)
 read -r _ saved_writes saved_flushes <<< "$saved"
 (( saved_flushes > before_flushes && saved_writes > before_writes )) ||

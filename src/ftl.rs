@@ -6,6 +6,10 @@ use crate::nand::{
 };
 use crate::Trace;
 
+#[cfg_attr(feature = "learner", path = "../course/learner/ftl.rs")]
+#[cfg_attr(not(feature = "learner"), path = "ftl/reference.rs")]
+mod implementation;
+
 pub(crate) const LOGICAL_BLOCKS: usize = 8;
 
 /// The physical pages and mapping that survive a simulated cut.
@@ -145,7 +149,7 @@ impl Ftl {
         let page = self.live.nand.erased_pages().next().expect("free page");
         self.live.nand.program(page, data)?;
         trace.push(format!("nand   program page {page}"));
-        let previous = self.live.map[lba].replace(page);
+        let previous = self.live.publish_mapping(lba, page);
         if let Some(previous) = previous {
             trace.push(format!(
                 "ftl    map LBA {lba} -> page {page}, stale page {previous}"
@@ -235,21 +239,7 @@ impl FlashImage {
         let victim = victim.ok_or_else(|| io::Error::other("no reclaimable NAND erase block"))?;
         let victim_pages = geometry.erase_block_pages(victim);
 
-        for (lba, mapping) in self.map.iter_mut().enumerate() {
-            if let Some(source) = mapping.filter(|page| victim_pages.contains(page)) {
-                let destination = self
-                    .nand
-                    .erased_pages()
-                    .find(|page| !victim_pages.contains(page))
-                    .expect("space reserved outside victim");
-                let data = self.nand.read(source).expect("mapped page").clone();
-                self.nand.program(destination, data)?;
-                *mapping = Some(destination);
-                trace.push(format!(
-                    "ftl    gc copy LBA {lba} from page {source} to page {destination}"
-                ));
-            }
-        }
+        self.relocate_live_pages(victim_pages, trace)?;
         self.nand.erase(victim);
         trace.push(format!(
             "nand   erase block {victim}, reclaim {most_stale} stale pages"
@@ -349,6 +339,29 @@ mod tests {
     }
 
     #[test]
+    fn successful_programs_publish_the_new_mapping() {
+        let mut trace = Vec::new();
+        let mut ftl = Ftl::new();
+        ftl.write(0, Box::new([0x12; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        let first = ftl
+            .live
+            .mapped_page(0)
+            .expect("map the first programmed page");
+        assert_eq!(ftl.read(0, &mut trace).unwrap()[0], 0x12);
+
+        ftl.write(0, Box::new([0x34; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        let second = ftl.live.mapped_page(0).expect("map the replacement page");
+        assert_ne!(first, second);
+        assert_eq!(ftl.live.nand.read(first).unwrap()[0], 0x12);
+        assert_eq!(ftl.read(0, &mut trace).unwrap()[0], 0x34);
+        assert!(trace.contains(&format!(
+            "ftl    map LBA 0 -> page {second}, stale page {first}"
+        )));
+    }
+
+    #[test]
     fn collection_copies_live_pages_before_erasing_and_recovery_keeps_them() {
         let mut trace = Vec::new();
         let mut ftl = Ftl::new();
@@ -360,9 +373,11 @@ mod tests {
             ftl.write(0, Box::new([value; BLOCK_BYTES]), &mut trace)
                 .unwrap();
         }
+        let old_page = ftl.live.mapped_page(0).expect("map the latest page");
         ftl.write(1, Box::new([42; BLOCK_BYTES]), &mut trace)
             .unwrap();
-        assert!(trace.iter().any(|event| event.contains("gc copy LBA 0")));
+        assert_ne!(ftl.live.mapped_page(0), Some(old_page));
+        assert!(ftl.live.nand.read(old_page).is_none());
         ftl.flush(&mut trace);
 
         let ftl = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
