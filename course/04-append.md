@@ -89,19 +89,20 @@ runner report also includes p99 and the saved checkpoint for each run.
 
 | Filesystem and group | Engine | Records per second | Acknowledgement p50, µs |
 | --- | --- | --- | --- |
-| ext4, 4 | sync | 6791, 6830 | 591, 584 |
-| ext4, 4 | io_uring | 6525, 6436 | 613, 620 |
-| ext4, 32 | sync | 33788, 34466 | 889, 903 |
-| ext4, 32 | io_uring | 35902, 41744 | 892, 756 |
-| FUSE, 4 | sync | 8133, 8122 | 497, 477 |
-| FUSE, 4 | io_uring | 7990, 8043 | 506, 499 |
-| FUSE, 32 | sync | 31483, 17434 | 1002, 1846 |
-| FUSE, 32 | io_uring | 28969, 29736 | 1074, 1074 |
+| ext4, 4 | sync | 6841, 5883 | 584, 670 |
+| ext4, 4 | io_uring | 5974, 6158 | 667, 652 |
+| ext4, 32 | sync | 40637, 49237 | 764, 654 |
+| ext4, 32 | io_uring | 39249, 46168 | 826, 689 |
+| FUSE, 4 | sync | 7847, 8147 | 513, 431 |
+| FUSE, 4 | io_uring | 7298, 7535 | 541, 518 |
+| FUSE, 32 | sync | 29557, 39817 | 1104, 748 |
+| FUSE, 32 | io_uring | 27632, 41246 | 1179, 748 |
 
-Larger groups increased throughput and time to acknowledgement in
-this sweep. The engine comparison varied with filesystem, group size,
-and repetition. The FUSE synchronous group-32 runs also illustrate
-how much two repetitions can differ with the same inputs.
+Larger groups increased throughput in every matched repeat. The
+acknowledgement p50 usually rose. The second ext4 sync repeat went
+from 670 to 654 µs. The engine comparison varied with filesystem,
+group size, and repetition. Both group-32 FUSE engines also had
+substantially different rates between their two runs.
 
 ## Follow the acknowledgement across layers
 
@@ -124,7 +125,7 @@ and map events.
 
 In the first FUSE synchronous group-4 run, the final acknowledged
 record had ID 319 and offset 163,328. The total receipt was 163,840
-bytes. The runner printed ublk tag 3, inner request 1,338, and FTL
+bytes. The runner printed ublk tag 5, inner request 1,374, and FTL
 flush 406 for the captured checkpoint. Reopening that checkpoint
 verified the same 320 records. The observed link is the receipt
 and flush. The physical page holding record 319 stays unknown.
