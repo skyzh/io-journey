@@ -16,6 +16,8 @@ many. In [`course/learner/queue.rs`](learner/queue.rs), implement
 already validates the whole range. A full queue returns the caller's
 submission so the caller can retry after receiving a completion. Run
 the check again and verify the rejected request consumed no slot.
+The supplied fields are `pending` of type `VecDeque<Request>` and
+`depth` of type `NonZeroUsize`.
 
 ## Preserve order and IDs
 
@@ -24,14 +26,16 @@ ID in `allocate_id`. Return a rejected submission error if incrementing
 `next_id` would overflow. In `take_next_request`, take the oldest
 accepted request from the supplied `VecDeque`. Run the check again.
 The first two completions must match the submission order, and a
-third completion must find the queue empty.
+third completion must find the queue empty. `RequestId` is `u64`, and
+`SubmitError::Rejected` holds a `std::io::Error`.
 
 ## Flush at the request boundary
 
 Run `./course/learner.sh flush`. The fixture writes a range, submits
 a flush, then submits another write as space opens. In `flush_image`,
 publish the FTL image when the queue executes that flush. At this point
-the earlier range has finished. The later write stays outside the
+the earlier range has finished. The supplied `Ftl::flush` takes
+`&mut Trace` and returns `()`. The later write stays outside the
 durable image. Run the check again to verify the reopened blocks, range
 validation, backpressure, and cancellation after a failed block.
 
@@ -73,7 +77,7 @@ covers the device and the NAND counters cover the simulator.
 
 ### Recorded comparison
 
-The learner build's six fio cases had equal Linux issue and successful
+The author's learner build ran six fio cases with equal Linux issue and successful
 server byte counts, with zero excess over fio. In each 4 KiB pair below
 both arms issued 11,677,696 read bytes
 and 5,099,520 write bytes. All four runs requested depth eight.
@@ -87,6 +91,9 @@ and 5,099,520 write bytes. All four runs requested depth eight.
 
 In this guest sweep the eligible reads advanced and waited less in
 the server. End-to-end p99 grew and throughput fell in both pairs.
+A separate learner walkthrough also found shorter server wait. Its
+fio p99 fell and throughput rose in its two matched pairs. Compare
+each sweep at the achieved depths reported by fio.
 The depth-one run achieved depth one throughout, and the 16 KiB
 run achieved depth eight. The benchmark's report retains both rows,
 including their different request sizes, byte counts, and timings.

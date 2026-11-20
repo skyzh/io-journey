@@ -380,6 +380,17 @@ mod tests {
         }
     }
 
+    fn check_block(lba: usize, block: &[u8; BLOCK_BYTES], expected: u8) {
+        if let Some((offset, byte)) = block
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|&(_, byte)| byte != expected)
+        {
+            panic!("LBA {lba} byte {offset} expected {expected:#04x}, got {byte:#04x}");
+        }
+    }
+
     #[test]
     fn a_bounded_queue_flushes_every_child_and_excludes_the_later_range() {
         let mut trace = Vec::new();
@@ -411,16 +422,16 @@ mod tests {
             assert!(matches!(completion.result.unwrap(), Response::Done));
         }
         let blocks = queue.read_range(0, 3, &mut trace).unwrap();
-        for (block, byte) in blocks.iter().zip([4, 5, 3]) {
-            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        for (lba, (block, byte)) in blocks.iter().zip([4, 5, 3]).enumerate() {
+            check_block(lba, block, byte);
         }
 
         let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
         let mut reopened = BlockQueue::new(ftl, NonZeroUsize::MIN);
         let blocks = reopened.read_range(0, 3, &mut trace).unwrap();
         assert_eq!(blocks.len(), 3);
-        for (block, byte) in blocks.iter().zip([1, 2, 3]) {
-            assert_eq!(**block, [byte; BLOCK_BYTES]);
+        for (lba, (block, byte)) in blocks.iter().zip([1, 2, 3]).enumerate() {
+            check_block(lba, block, byte);
         }
         assert!(trace.iter().any(|line| line.contains("split #1 into 3")));
     }
@@ -530,7 +541,7 @@ mod tests {
 
         let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
         let mut reopened = BlockQueue::new(ftl, depth);
-        assert_eq!(*reopened.read(2, &mut trace).unwrap(), [0x73; BLOCK_BYTES]);
+        check_block(2, &reopened.read(2, &mut trace).unwrap(), 0x73);
     }
 
     #[test]
