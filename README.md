@@ -102,7 +102,9 @@ The tear hook needs a page erased in both the live and durable images. If
 earlier unflushed writes leave no shared erased page, the hook reports a
 device error before programming any partial bytes.
 
-The ublk lab connects ext4 to the Rust block device. The later course labs
-cover queue measurements, metadata journaling, FUSE, and io_uring.
+The [ublk lab](linux/ublk/README.md) connects ext4 to the Rust block device.
+The [FUSE lab](linux/fuse/README.md) uses the same device with a root
+directory and a metadata journal. It shows how file sync and directory
+sync affect recovery.
 The earlier NBD and `fio` pilot is available in Git
 history at `073e7f4` ("Fix fio FLUSH and JSON evidence (#2)").
