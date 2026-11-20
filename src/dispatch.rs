@@ -86,5 +86,22 @@ mod tests {
             next_index(Policy::ReadFirst, &[write, overflow], |entry| *entry),
             0
         );
+        let later_write = request(Kind::Write, 32, 8);
+        assert_eq!(
+            next_index(
+                Policy::ReadFirst,
+                &[write, later_write, overlapping],
+                |entry| *entry
+            ),
+            0
+        );
+        assert_eq!(
+            next_index(
+                Policy::ReadFirst,
+                &[write, overlapping, disjoint],
+                |entry| *entry
+            ),
+            2
+        );
     }
 }

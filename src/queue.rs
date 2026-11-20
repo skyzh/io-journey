@@ -361,6 +361,13 @@ mod tests {
             .complete_next(Driver::Explicit, &mut trace)
             .unwrap()
             .is_none());
+        queue.next_id = RequestId::MAX;
+        let trace_before = trace.len();
+        let rejected = queue.try_submit(Operation::Read { lba: 0, blocks: 1 }, &mut trace);
+        assert!(matches!(rejected, Err(SubmitError::Rejected(_))));
+        assert_eq!(queue.next_id, RequestId::MAX);
+        assert!(queue.pending.is_empty());
+        assert_eq!(trace.len(), trace_before);
     }
 
     fn write_request(lba: usize, values: &[u8]) -> Operation {

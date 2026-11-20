@@ -60,10 +60,30 @@ orb -m ubuntu -u root unshare --mount --propagation private bash linux/ublk/queu
 ```
 
 The adapter builds your FTL, inner queue, and dispatch from this
-checkout. The two policies share that binary. Read the 4 KiB, depth-eight
+checkout. A missing learner module stops the build before a device
+is allocated. The two policies share that binary. Read the 4 KiB, depth-eight
 pairs before changing request size or depth. Check that fio, Linux block
 completion, and server byte counts agree. Compare requested depth with
 the achieved depth, then compare server queue wait, fio read p99, and
 throughput. Reads that advance in the server can still see higher
 end-to-end latency if work is batched differently. The guest trace
 covers the device and the NAND counters cover the simulator.
+
+### Recorded comparison
+
+The learner build's six fio cases reconciled fio, guest, and device
+bytes. In each 4 KiB pair below both arms issued 11,677,696 read bytes
+and 5,099,520 write bytes. All four runs requested depth eight.
+
+| Pair and policy | Achieved depth | Reads advanced | Server read wait p99 | fio read p99 | Throughput |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 FIFO | 2 at 0.2%, 4 at 96.9%, 8 at 2.9% | 0 | 11.4 µs | 27.8 µs | 1,600 MiB/s |
+| 1 read-first | 2 at 1.4%, 4 at 91.8%, 8 at 6.8% | 881 | 6.0 µs | 42.8 µs | 1,455 MiB/s |
+| 2 read-first | 8 at 100% | 793 | 7.4 µs | 32.1 µs | 1,455 MiB/s |
+| 2 FIFO | 8 at 100% | 0 | 11.2 µs | 26.8 µs | 1,600 MiB/s |
+
+In this guest sweep the eligible reads advanced and waited less in
+the server. End-to-end p99 grew and throughput fell in both pairs.
+The depth-one run achieved depth one throughout, and the 16 KiB
+run achieved depth eight. The benchmark's report retains both rows,
+including their different request sizes, byte counts, and timings.
