@@ -7,7 +7,8 @@ build_adapter() {
     export CARGO_TARGET_DIR="$build_dir/target"
     export TMPDIR="$build_dir/tmp"
     export CARGO_INCREMENTAL=0
-    if [[ -z "${LIBCLANG_PATH:-}" ]] && ! ldconfig -p | grep -F libclang >/dev/null; then
+    if [[ -z "${LIBCLANG_PATH:-}" ]] &&
+        ! ldconfig -p | grep -E '^[[:space:]]*libclang(-[0-9]+(\.[0-9]+)*)?\.so(\.[0-9]+)*[[:space:]]' >/dev/null; then
         [[ $(dpkg-query -W -f='${db:Status-Status}' libllvm21 2>/dev/null) == installed ]] ||
             fail 'Set LIBCLANG_PATH to an available libclang shared library directory.'
         mkdir "$build_dir/clang"
