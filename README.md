@@ -4,6 +4,9 @@ Follow an append from a Rust application through a filesystem, a bounded
 block queue, and a flash translation layer (FTL) to simulated NAND. The demo
 flushes two records and checks their recovery after two simulated power cuts.
 
+[Start here](course/START.md) for the course setup, then follow the
+[chapter index](course/README.md).
+
 ## Run the demo
 
 The demo needs Bash, Rust and Cargo, and `findmnt` from util-linux in Linux.
@@ -46,8 +49,9 @@ app    read after torn program: ["first", "second"]
 demo   verified the acknowledged prefix after both cuts
 ```
 
-Continue with the [four userspace checkpoints](course/README.md) or run the
-[Linux ext4 lab](linux/ublk/README.md) on the same block device.
+Continue with the [FTL chapter](course/01-ftl.md) and run your implementation
+under ext4. The [independent checkpoints](course/README.md#independent-checkpoints)
+and the [reference ext4 lab](linux/ublk/README.md) are also available.
 
 ## Follow a record
 
