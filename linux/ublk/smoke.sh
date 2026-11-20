@@ -18,13 +18,26 @@ done
 mode=ext4
 profile_args=()
 if (( $# != 0 )); then
-    [[ $# == 5 && "$1" == queue-case ]] || fail 'Use the queue-bench.sh entry for a benchmark.'
-    [[ "$2" == fifo || "$2" == read-first ]] || fail 'Invalid scheduling policy.'
-    [[ "$3" == 1 || "$3" == 8 ]] || fail 'Invalid benchmark depth.'
-    [[ "$4" == 4096 || "$4" == 16384 ]] || fail 'Invalid benchmark request size.'
-    [[ -d "$5" && $(findmnt -n -o FSTYPE -T "$5") == tmpfs ]] ||
-        fail 'Benchmark output must be in guest tmpfs.'
-    mode=queue-case
+    mode=$1
+    case "$mode" in
+        queue-case)
+            [[ $# == 5 ]] || fail 'Use queue-bench.sh for a benchmark.'
+            [[ "$2" == fifo || "$2" == read-first ]] || fail 'Invalid scheduling policy.'
+            [[ "$3" == 1 || "$3" == 8 ]] || fail 'Invalid benchmark depth.'
+            [[ "$4" == 4096 || "$4" == 16384 ]] || fail 'Invalid benchmark request size.'
+            [[ -d "$5" && $(findmnt -n -o FSTYPE -T "$5") == tmpfs ]] ||
+                fail 'Benchmark output must be in guest tmpfs.'
+            ;;
+        fuse-case)
+            [[ $# == 2 ]] || fail 'Use linux/fuse/smoke.sh for the FUSE lab.'
+            fuse_binary=$(realpath -- "$2")
+            [[ -x "$fuse_binary" && $(findmnt -n -o FSTYPE -T "$fuse_binary") == tmpfs ]] ||
+                fail 'Use a FUSE binary from guest tmpfs.'
+            ;;
+        *)
+            fail 'Unknown lab workload.'
+            ;;
+    esac
 fi
 
 run_dir=$(mktemp -d /dev/shm/io-journey-ublk.XXXXXX)
@@ -145,7 +158,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ "$mode" == ext4 ]]; then
+if [[ "$mode" != queue-case ]]; then
     build_adapter "$adapter_dir" "$run_dir"
 fi
 "$binary" serve "$socket" "${profile_args[@]}" > "$log" 2>&1 &
@@ -180,6 +193,10 @@ control() {
 if [[ "$mode" == queue-case ]]; then
     source "$adapter_dir/queue-case.sh"
     run_queue_case "$2" "$3" "$4" "$5"
+    exit 0
+fi
+if [[ "$mode" == fuse-case ]]; then
+    bash "$adapter_dir/../fuse/workload.sh" "$fuse_binary" "$binary" "$socket" "$server_pid" "$node_identity" "$device_id"
     exit 0
 fi
 
