@@ -6,11 +6,11 @@ fail() {
     exit 1
 }
 
-[[ $# == 11 && $(id -u) == 0 && $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs &&
-   $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
+[[ $# == 11 && $(id -u) == 0 && $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]] ||
     fail 'Use the append benchmark in a private guest mount namespace.'
 case_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$case_dir/../mount-state.sh"
+require_private_mount_namespace
 filesystem=$1 engine=$2 group=$3 output=$4
 adapter=$5 socket=$6 server_pid=$7 identity=$8 device_id=$9
 [[ "$device_id" =~ ^[0-9]+$ ]] || fail 'Invalid lab device ID.'
@@ -19,6 +19,7 @@ mount_dir=${10} mount_name=${11}
 [[ "$mount_dir" == "${socket%/*}/mount" && -d "$mount_dir" &&
    "$mount_name" == "$(basename -- "${socket%/*}")" ]] ||
     fail 'Use the mount path and identity assigned by the device owner.'
+require_private_mount_parent "$mount_dir"
 mount_absent "$mount_dir" || fail 'Use an inspectable, unmounted run path.'
 backend="/dev/ublkb$device_id"
 ! findmnt -rn -S "$backend" >/dev/null || fail 'The owned device is already mounted.'

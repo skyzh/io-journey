@@ -8,6 +8,23 @@ mount_state() {
     return "$status"
 }
 
+require_private_mount_namespace() {
+    local current initial
+    if ! current=$(readlink /proc/self/ns/mnt) || ! initial=$(readlink /proc/1/ns/mnt) ||
+        [[ -z "$current" || -z "$initial" || "$current" == "$initial" ]]; then
+        printf '%s\n' 'Run in a private mount namespace using unshare --mount --propagation private.' >&2
+        return 1
+    fi
+}
+
+require_private_mount_parent() {
+    local path=$1 propagation
+    if ! propagation=$(findmnt -n -o PROPAGATION -T "$path") || [[ "$propagation" != private ]]; then
+        printf 'The filesystem containing %s must have private mount propagation.\n' "$path" >&2
+        return 1
+    fi
+}
+
 mount_absent() {
     local status=0
     mount_state "$1" || status=$?

@@ -7,12 +7,13 @@ fail() {
 }
 
 [[ $(id -u) == 0 && -c /dev/fuse ]] || fail 'Run the lab as guest root.'
-[[ $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
-    fail 'The lab needs a private mount namespace.'
 [[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]] || fail '/dev/shm must be tmpfs.'
 [[ $# == 1 || $# == 8 ]] || fail 'Use the FUSE smoke entry.'
 
 fuse_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+source "$fuse_dir/mount.sh"
+require_private_mount_namespace
+require_private_mount_parent /dev/shm
 binary=$(realpath -- "$1")
 [[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
     fail 'The FUSE server binary must be in guest tmpfs.'
@@ -22,8 +23,6 @@ mount_name="${run_dir##*/}"
 fuse_pid=
 backend="$run_dir/lab.img"
 mode=image
-
-source "$fuse_dir/mount.sh"
 
 cleanup() {
     local status=$?
@@ -50,6 +49,7 @@ if (( $# == 8 )); then
     [[ "$7" == "${socket%/*}/mount" && -d "$7" && "$8" == "$(basename -- "${socket%/*}")" ]] ||
         fail 'Use the mount path and identity assigned by the device owner.'
     mount_dir=$7 mount_name=$8
+    require_private_mount_parent "$mount_dir"
     backend="/dev/ublkb$device_id"
     mount_absent "$mount_dir" || fail 'Use an inspectable, unmounted run path.'
     ! findmnt -rn -S "$backend" >/dev/null || fail 'The owned device is already mounted.'
