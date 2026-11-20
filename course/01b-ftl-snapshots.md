@@ -42,7 +42,8 @@ and save lifetimes. Fill 256 LBAs on 128 blocks of eight pages, then run
 12 barriers. The clean barriers have no new writes. Before each dirty
 barrier, replace one LBA. Hold the first and last exports across the
 same tear. Each run checks both saved images and every committed block.
-The benchmarks compare the supplied implementations. Use
+The benchmarks compare the supplied implementations with the free-space
+index disabled in both builds. Use
 `./course/learner.sh sharing` to check your edited implementation.
 
 The timing CSV has one row per barrier. It measures flush and export
@@ -58,14 +59,14 @@ retained while an earlier image holds them.
 
 The guest ran two sweeps per implementation with 21 repetitions per sweep.
 These medians use identical Rust 1.93.1 release flags and the source at
-`0f3dd0a1bec2e9d97c27442ed46b189aea9575d0`.
+`c89b7720b760262c1e800bf7c2f02bcdcbd9ea3c`.
 
 | Work | Full copy | Shared pages |
 | --- | ---: | ---: |
-| Clean flush | 28.25 µs | 1.17 µs |
-| Clean export | 24.71 µs | 0.69 µs |
-| Dirty write and flush | 28.50 µs | 1.63 µs |
-| Write-to-flush total over all 12 barriers | 421.48 µs | 97.44 µs |
+| Clean flush | 25.96 µs | 1.04 µs |
+| Clean export | 22.54 µs | 0.63 µs |
+| Dirty write and flush | 25.35 µs | 1.46 µs |
+| Write-to-flush total over all 12 barriers | 372.23 µs | 81.71 µs |
 | New payload allocated per flush or export | 1,048,576–1,069,056 B | 0 B |
 | First export's added retained heap | 1,060,864 B | 12,288 B |
 | Last export's added retained heap | 1,081,344 B | 12,288 B |
@@ -76,6 +77,8 @@ copied the same amount again. The shared version still clones 8,192 bytes
 of physical slots and 4,096 bytes of logical mapping per image. The first
 256 programs add 6,144 bytes of shared-owner storage in this build. An
 owner stays live as long as a saved image holds it. Allocation counts
-refer to requested Rust heap bytes in the probe. Timings refer to this
-simulated workload in OrbStack. The workload follows the deep-copy FTL
+refer to requested Rust heap bytes in the probe. An earlier sweep at
+`0f3dd0a1bec2e9d97c27442ed46b189aea9575d0` measured total write-to-flush
+times of 421.48 µs and 97.44 µs, with identical heap counts. Timings refer to
+this simulated workload in OrbStack. The workload follows the deep-copy FTL
 case at `4d04bed`. [Fixture source](measure-snapshots.rs) · [Run script](measure-snapshots.sh)
