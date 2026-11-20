@@ -9,8 +9,9 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use io_journey::record::{decode, encode, DEMO_RECORDS};
@@ -115,14 +116,9 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
             Ok(())
         },
         move |qid, dev| {
-            if let Err(error) = target::run_queue(qid, dev, &worker_state, policy) {
-                let message = format!("ublk queue failed: {error}");
-                worker_state
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .fail_worker(message.clone());
-                eprintln!("{message}");
-            }
+            run_worker(&worker_state, || {
+                target::run_queue(qid, dev, &worker_state, policy)
+            });
         },
         move |ctrl| {
             let result = (|| {
@@ -150,11 +146,33 @@ fn serve(socket: &Path, policy: Policy, profile: Option<PathBuf>) -> Result<(), 
         .expect("control outcome")
         .take()
         .ok_or_else(|| io::Error::other("ublk server exited before serving control"))??;
+    drop(lock_ready_device(&state)?);
+    Ok(())
+}
+
+fn run_worker<E: std::fmt::Display>(state: &Mutex<LabDevice>, run: impl FnOnce() -> Result<(), E>) {
+    let message = match panic::catch_unwind(AssertUnwindSafe(run)) {
+        Ok(Ok(())) => return,
+        Ok(Err(error)) => format!("ublk queue failed: {error}"),
+        Err(_) => "ublk queue worker panicked".into(),
+    };
     state
         .lock()
-        .map_err(|_| io::Error::other("device lock is poisoned"))?
-        .check_worker()?;
-    Ok(())
+        .unwrap_or_else(PoisonError::into_inner)
+        .fail_worker(message.clone());
+    eprintln!("{message}");
+}
+
+fn lock_ready_device(state: &Mutex<LabDevice>) -> io::Result<MutexGuard<'_, LabDevice>> {
+    let device = match state.lock() {
+        Ok(device) => device,
+        Err(poisoned) => {
+            poisoned.into_inner().check_worker()?;
+            return Err(io::Error::other("device lock is poisoned"));
+        }
+    };
+    device.check_worker()?;
+    Ok(device)
 }
 
 fn control_loop(
@@ -176,19 +194,14 @@ fn control_loop(
             return Ok(());
         }
 
-        let reply = {
-            let mut device = state
-                .lock()
-                .map_err(|_| io::Error::other("device lock is poisoned"))?;
-            device.check_worker().and_then(|()| match command.trim() {
-                "stats" => Ok(count_line(device.counts())),
-                "checkpoint" => Ok(count_line(device.save_checkpoint())),
-                "cut" => device.cut().map(count_line),
-                "profile-start" => device.start_profile().map(|()| "profiling".into()),
-                "profile-save" => device.save_profile().map(|rows| rows.to_string()),
-                _ => Err(invalid("unknown ublk control command")),
-            })
-        };
+        let reply = lock_ready_device(state).and_then(|mut device| match command.trim() {
+            "stats" => Ok(count_line(device.counts())),
+            "checkpoint" => Ok(count_line(device.save_checkpoint())),
+            "cut" => device.cut().map(count_line),
+            "profile-start" => device.start_profile().map(|()| "profiling".into()),
+            "profile-save" => device.save_profile().map(|rows| rows.to_string()),
+            _ => Err(invalid("unknown ublk control command")),
+        });
         // Reply delivery belongs to this client connection.
         let _ = match reply {
             Ok(reply) => writeln!(stream, "{reply}"),
@@ -351,20 +364,14 @@ mod tests {
         check_stats_then_stop(server);
     }
 
-    #[test]
-    fn failed_worker_rejects_device_commands_but_accepts_stop() {
+    fn check_failed_worker(state: &Mutex<LabDevice>, message: &str) {
         let (stats, mut stats_peer) = client(b"stats\n");
         let (checkpoint, mut checkpoint_peer) = client(b"checkpoint\n");
         let (stop, mut stop_peer) = client(b"stop\n");
-        let state = Mutex::new(LabDevice::new(None).unwrap());
-        state
-            .lock()
-            .unwrap()
-            .fail_worker("ublk queue failed: injected failure".into());
         let mut stopped = false;
         control_loop(
             [Ok(stats), Ok(checkpoint), Ok(stop)],
-            &state,
+            state,
             TEST_TIMEOUT,
             || {
                 stopped = true;
@@ -376,15 +383,51 @@ mod tests {
         for peer in [&mut stats_peer, &mut checkpoint_peer] {
             let mut reply = String::new();
             peer.read_to_string(&mut reply).unwrap();
-            assert_eq!(reply, "error ublk queue failed: injected failure\n");
+            assert_eq!(reply, format!("error {message}\n"));
         }
         let mut reply = String::new();
         stop_peer.read_to_string(&mut reply).unwrap();
         assert_eq!(reply, "stopped\n");
         assert!(stopped);
-        let mut device = state.lock().unwrap();
-        assert!(device.check_worker().is_err());
+        assert_eq!(lock_ready_device(state).err().unwrap().to_string(), message);
+        let mut device = state.lock().unwrap_or_else(PoisonError::into_inner);
         assert!(device.cut().is_err());
+    }
+
+    #[test]
+    fn failed_worker_rejects_device_commands_but_accepts_stop() {
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        run_worker(&state, || Err(io::Error::other("injected failure")));
+        check_failed_worker(&state, "ublk queue failed: injected failure");
+    }
+
+    #[test]
+    fn panicked_worker_reports_failure_with_or_without_a_poisoned_model() {
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        run_worker(&state, || -> io::Result<()> {
+            panic!("injected worker panic")
+        });
+        assert!(!state.is_poisoned());
+        check_failed_worker(&state, "ublk queue worker panicked");
+
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        run_worker(&state, || -> io::Result<()> {
+            let _locked = state.lock().unwrap();
+            panic!("injected worker panic with the model locked");
+        });
+        assert!(state.is_poisoned());
+        check_failed_worker(&state, "ublk queue worker panicked");
+    }
+
+    #[test]
+    fn poisoned_model_without_a_worker_result_accepts_stop() {
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+            let _locked = state.lock().unwrap();
+            panic!("injected panic before the worker result is recorded");
+        }));
+        assert!(result.is_err());
+        check_failed_worker(&state, "device lock is poisoned");
     }
 
     #[test]
