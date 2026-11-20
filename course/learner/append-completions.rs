@@ -1,5 +1,4 @@
 use std::io;
-use std::sync::Arc;
 
 use super::{Completion, Request};
 
@@ -8,11 +7,10 @@ pub(super) fn check_completions(_wave: &[Request], _completed: Vec<Completion>) 
     Err(io::Error::other("implement completion validation"))
 }
 
-pub(super) fn retire_ring_wave(
+pub(super) fn drain_ring_wave(
     _wave: &[Request],
-    _retained: &mut Vec<Arc<[u8]>>,
     _poll: impl FnMut(&mut Vec<Completion>) -> io::Result<()>,
 ) -> io::Result<()> {
-    // TODO: Drain the wave before releasing the buffers proven retired.
+    // TODO: Poll until every completion can be checked, then check the whole set.
     Err(io::Error::other("implement ring retirement"))
 }

@@ -35,21 +35,23 @@ unknown, duplicate, or missing IDs with `InvalidData`, and report a
 short write with `WriteZero`. Keep the first I/O failure for a complete
 set of IDs.
 
-In `retire_ring_wave`, call the supplied poll function until the wave
+In `drain_ring_wave`, call the supplied poll function until the wave
 has a completion for each request. A short write or failed operation
 can arrive while another buffer is still in use. Validate the full
-set first. Release the wave's references when all IDs are accounted
-for, including a completed set that reports a write error. A poll
-failure or an invalid set leaves the allocations retained. The
-adapter stops after such an error and keeps the unproven buffers
-until process exit. Run the check again to test both cases.
+set first. Your code returns the operation result. The supplied adapter
+owns the buffer references and proves that the kernel returned one
+completion for every submitted ID before it releases them. A complete
+ID set retires even if a write returns `InvalidData`. A failed wait
+or an invalid ID set keeps the unproven buffers through process exit.
+Run the check again to exercise both kinds of failure.
 
 ## Acknowledge after sync
 
 Run `./course/learner.sh ack`. Open
 [`course/learner/append-commit.rs`](learner/append-commit.rs) and write
-the group in chunks of `DEPTH`. After every wave succeeds, sync the
-file. Add one receipt per record only after successful sync. Each
+the group in chunks of `DEPTH`. Once all waves in the group succeed,
+sync the file once. Add one receipt per record only after that sync
+succeeds. Each
 latency runs from the start of the group to that point.
 
 Run the check again. A failed or short write cannot reach sync or

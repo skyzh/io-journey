@@ -4,7 +4,7 @@
 )]
 #[cfg_attr(not(feature = "learner-append"), path = "engine/reference.rs")]
 mod completion;
-use completion::{check_completions, retire_ring_wave};
+use completion::{check_completions, drain_ring_wave};
 
 use std::fs::File;
 use std::io;
@@ -198,6 +198,54 @@ impl Drop for Uring {
     }
 }
 
+fn retire_ring_wave(
+    wave: &[Request],
+    retained: &mut Vec<Arc<[u8]>>,
+    mut poll: impl FnMut(&mut Vec<Completion>) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut seen = [false; DEPTH];
+    let mut invalid_ids = false;
+    let mut failed_write = false;
+    let result = drain_ring_wave(wave, |completed| {
+        if invalid_ids || seen[..wave.len()].iter().all(|&done| done) {
+            return Err(invalid_completion("no further completions expected"));
+        }
+        let first = completed.len();
+        poll(completed)?;
+        // Only the entries appended by the kernel poll can retire buffers.
+        for completion in &completed[first..] {
+            let Some(index) = wave.iter().position(|request| request.id == completion.id) else {
+                invalid_ids = true;
+                continue;
+            };
+            if seen[index] {
+                invalid_ids = true;
+                continue;
+            }
+            seen[index] = true;
+            failed_write |= !matches!(
+                &completion.result, Ok(size) if *size == wave[index].bytes.len()
+            );
+        }
+        Ok(())
+    });
+
+    if invalid_ids || !seen[..wave.len()].iter().all(|&done| done) {
+        return result.and(Err(invalid_completion("incomplete kernel completion set")));
+    }
+    retained.clear();
+    if failed_write && result.is_ok() {
+        return Err(io::Error::other(
+            "wave reported success after a failed write",
+        ));
+    }
+    result
+}
+
+fn invalid_completion(message: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +283,36 @@ mod tests {
             for item in &wave {
                 assert_eq!(Arc::strong_count(&item.bytes), 2);
             }
+        }
+    }
+
+    #[test]
+    fn a_valid_id_set_retires_even_when_a_write_returns_invalid_data() {
+        let wave = [request(1), request(2)];
+        let mut retained = wave
+            .iter()
+            .map(|item| item.bytes.clone())
+            .collect::<Vec<_>>();
+        let result = retire_ring_wave(&wave, &mut retained, |completed| {
+            completed.push(Completion {
+                id: 2,
+                result: Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "injected write error",
+                )),
+            });
+            completed.push(Completion {
+                id: 1,
+                result: Ok(wave[0].bytes.len()),
+            });
+            Ok(())
+        });
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "injected write error");
+        assert!(retained.is_empty());
+        for item in &wave {
+            assert_eq!(Arc::strong_count(&item.bytes), 1);
         }
     }
 

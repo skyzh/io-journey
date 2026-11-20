@@ -179,6 +179,33 @@ fn invalid(message: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn a_group_syncs_once_after_all_waves() {
+        let requests = requests(0, 3 * DEPTH).unwrap();
+        let write_calls = Cell::new(0);
+        let sync_calls = Cell::new(0);
+        let mut receipts = Vec::new();
+        commit_group(
+            &requests,
+            &mut |wave| {
+                assert_eq!(wave.len(), DEPTH);
+                assert_eq!(sync_calls.get(), 0);
+                write_calls.set(write_calls.get() + 1);
+                Ok(())
+            },
+            &mut || {
+                assert_eq!(write_calls.get(), 3);
+                sync_calls.set(sync_calls.get() + 1);
+                Ok(())
+            },
+            &mut receipts,
+        )
+        .unwrap();
+        assert_eq!(sync_calls.get(), 1);
+        assert_eq!(receipts.len(), requests.len());
+    }
 
     #[test]
     fn short_write_or_error_cannot_acknowledge_or_sync_the_failed_group() {
