@@ -1,8 +1,13 @@
 # Shared private FUSE mount and teardown.
-owned_mount() {
+fuse_mount_matches() {
+    local path=$1 name=$2
     local identity
-    identity=$(findmnt -nr -o SOURCE,FSTYPE -M "$mount_dir") || return
-    [[ "$identity" == "$mount_name fuse" || "$identity" == "$mount_name fuse.io-journey" ]]
+    identity=$(findmnt -nr -o SOURCE,FSTYPE -M "$path") || return
+    [[ "$identity" == "$name fuse" || "$identity" == "$name fuse.io-journey" ]]
+}
+
+owned_mount() {
+    fuse_mount_matches "$mount_dir" "$mount_name"
 }
 
 start_mount() {

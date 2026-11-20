@@ -6,13 +6,18 @@ fail() {
     exit 1
 }
 
-[[ $# == 9 && $(id -u) == 0 && $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs &&
+[[ $# == 11 && $(id -u) == 0 && $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs &&
    $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
     fail 'Use the append benchmark in a private guest mount namespace.'
 filesystem=$1 engine=$2 group=$3 output=$4
 adapter=$5 socket=$6 server_pid=$7 identity=$8 device_id=$9
 [[ "$device_id" =~ ^[0-9]+$ ]] || fail 'Invalid lab device ID.'
 "$adapter" check-owned "$device_id" "$server_pid" "$identity" "$socket"
+mount_dir=${10} mount_name=${11}
+[[ "$mount_dir" == "${socket%/*}/mount" && -d "$mount_dir" &&
+   "$mount_name" == "$(basename -- "${socket%/*}")" ]] ||
+    fail 'Use the mount path and identity assigned by the device owner.'
+! mountpoint -q "$mount_dir" || fail 'The assigned mount path is already mounted.'
 backend="/dev/ublkb$device_id"
 ! findmnt -rn -S "$backend" >/dev/null || fail 'The owned device is already mounted.'
 [[ -d "$output" && $(findmnt -n -o FSTYPE -T "$output") == tmpfs ]] ||
@@ -23,8 +28,6 @@ append=$(realpath -- "${IO_JOURNEY_APPEND_BIN:?}")
 
 case_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 run_dir=$(mktemp -d /dev/shm/io-journey-append-case.XXXXXX)
-mount_dir="$run_dir/mount"
-mount_name="${run_dir##*/}"
 fuse_pid=
 
 start_mount() {
@@ -68,7 +71,6 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mkdir "$mount_dir"
 if [[ "$filesystem" == fuse ]]; then
     "$binary" format-device "$backend"
 else

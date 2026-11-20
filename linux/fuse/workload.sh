@@ -10,7 +10,7 @@ fail() {
 [[ $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
     fail 'The lab needs a private mount namespace.'
 [[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]] || fail '/dev/shm must be tmpfs.'
-[[ $# == 1 || $# == 6 ]] || fail 'Use the FUSE smoke entry.'
+[[ $# == 1 || $# == 8 ]] || fail 'Use the FUSE smoke entry.'
 
 fuse_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 binary=$(realpath -- "$1")
@@ -42,17 +42,21 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mkdir "$mount_dir"
-if (( $# == 6 )); then
+if (( $# == 8 )); then
     mode=ublk
     adapter=$2 socket=$3 server_pid=$4 identity=$5 device_id=$6
     [[ "$device_id" =~ ^[0-9]+$ ]] || fail 'Invalid lab device ID.'
     "$adapter" check-owned "$device_id" "$server_pid" "$identity" "$socket"
+    [[ "$7" == "${socket%/*}/mount" && -d "$7" && "$8" == "$(basename -- "${socket%/*}")" ]] ||
+        fail 'Use the mount path and identity assigned by the device owner.'
+    mount_dir=$7 mount_name=$8
     backend="/dev/ublkb$device_id"
+    ! mountpoint -q "$mount_dir" || fail 'The assigned mount path is already mounted.'
     ! findmnt -rn -S "$backend" >/dev/null || fail 'The owned device is already mounted.'
     "$binary" format-device "$backend"
     read -r _ _ previous_flush < <("$adapter" control "$socket" stats)
 else
+    mkdir "$mount_dir"
     "$binary" new-image "$backend"
 fi
 
