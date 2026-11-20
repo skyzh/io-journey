@@ -78,25 +78,24 @@ separate costs. Compare the timings as well as the reduced scans.
 This measured example uses 102 writes per implementation and condition
 across two order-balanced sweeps on OrbStack, with Rust 1.93.1 and
 identical release build flags.
-The source measured was `700f0fac2fe729fc5f46400913767c91e9c0b60f`.
+The source measured was `cd536d0cb9e4bcf9576b944bc8b3434439f932b0`.
 
 | Geometry and timed write | NAND slots visited during search and selection, scan / indexed | Map slots, scan / indexed | Programs / erases in both | Median time, scan / indexed |
 | --- | ---: | ---: | ---: | ---: |
-| 16 pages, collect | 70 / 0 | 40 / 8 | 2 / 1 | 292 / 333 ns |
-| 16 pages, no collection | 28 / 0 | 0 / 0 | 1 / 0 | 42 / 83 ns |
-| 1,024 pages, collect | 3,329 / 0 | 33,024 / 256 | 1 / 1 | 14,584 / 625 ns |
-| 1,024 pages, no collection | 2,040 / 0 | 0 / 0 | 1 / 0 | 500 / 125 ns |
+| 16 pages, collect | 70 / 0 | 40 / 8 | 2 / 1 | 208 / 250 ns |
+| 16 pages, no collection | 28 / 0 | 0 / 0 | 1 / 0 | 42 / 42 ns |
+| 1,024 pages, collect | 3,329 / 0 | 33,024 / 256 | 1 / 1 | 12,959 / 583 ns |
+| 1,024 pages, no collection | 2,040 / 0 | 0 / 0 | 1 / 0 | 458 / 125 ns |
 
 The indexed collection reads eight block summaries in the small case
 and 256 in the large case. It examines two free entries in the small
 case because a live page needs a destination, and one in the large
-case. The initial run of the small fixture also showed higher indexed
-collection time, with medians of 667 and 708 ns, and tied at 167 ns
-without collection. A separate learner run found that the small-geometry
-timings tied. Small workloads can tie or get slower with an index.
-The collection ranges overlap in both author runs of the small fixture.
-In the table's sweep they were 208–417 ns for scanning and 209–417 ns
-for indexing. Maintaining the index costs work at every update.
-Its reduced scans become useful at the larger geometry in this
-fixture. The small workload follows the FTL case at `4d04bed`.
+case. Small workloads can tie or get slower with an index. The small
+collection ranges in the table's sweep were 167–292 ns for scanning
+and 208–292 ns for indexing. Two earlier sweeps also had slower small
+indexed collection, at 667 / 708 ns and 292 / 333 ns respectively. The
+second also measured 42 / 83 ns without collection. A separate learner
+run found the small timings tied. Maintaining the index costs work at
+every update. Its reduced scans become useful at the larger geometry
+in this fixture. The small workload follows the FTL case at `4d04bed`.
 [Fixture source](measure-collection.rs) · [Run script](measure-collection.sh)
