@@ -1,26 +1,8 @@
-use std::io;
 use std::time::Instant;
 
+pub use io_journey::dispatch::Policy;
+use io_journey::dispatch::{self, DeviceRequest, Kind};
 use libublk::sys::{UBLK_IO_OP_FLUSH, UBLK_IO_OP_READ, UBLK_IO_OP_WRITE};
-
-#[derive(Clone, Copy)]
-pub enum Policy {
-    Fifo,
-    ReadFirst,
-}
-
-impl Policy {
-    pub fn parse(value: &str) -> io::Result<Self> {
-        match value {
-            "fifo" => Ok(Self::Fifo),
-            "read-first" => Ok(Self::ReadFirst),
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "expected fifo or read-first",
-            )),
-        }
-    }
-}
 
 pub struct Arrival {
     pub tag: u16,
@@ -40,33 +22,22 @@ impl Arrival {
         }
     }
 
-    fn disjoint(&self, other: &Self) -> bool {
-        let end = self.sector.checked_add(u64::from(self.sectors));
-        let other_end = other.sector.checked_add(u64::from(other.sectors));
-        end.zip(other_end)
-            .is_some_and(|(end, other_end)| end <= other.sector || other_end <= self.sector)
+    fn request(&self) -> DeviceRequest {
+        let kind = match self.op {
+            UBLK_IO_OP_READ => Kind::Read,
+            UBLK_IO_OP_WRITE => Kind::Write,
+            _ => Kind::Barrier,
+        };
+        DeviceRequest {
+            kind,
+            sector: self.sector,
+            sectors: self.sectors,
+        }
     }
 }
 
 pub fn next_index(policy: Policy, batch: &[Arrival]) -> usize {
-    if matches!(policy, Policy::Fifo) {
-        return 0;
-    }
-    for (index, read) in batch.iter().enumerate() {
-        match read.op {
-            UBLK_IO_OP_READ => {
-                if batch[..index]
-                    .iter()
-                    .all(|earlier| earlier.op != UBLK_IO_OP_WRITE || read.disjoint(earlier))
-                {
-                    return index;
-                }
-            }
-            UBLK_IO_OP_WRITE => {}
-            _ => break,
-        }
-    }
-    0
+    dispatch::next_index(policy, batch, Arrival::request)
 }
 
 #[cfg(test)]

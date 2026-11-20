@@ -6,5 +6,6 @@ publish = false
 
 [features]
 learner = []
+learner-queue = ["learner"]
 
 [dependencies]
