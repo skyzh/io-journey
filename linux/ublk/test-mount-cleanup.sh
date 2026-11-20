@@ -8,10 +8,13 @@ source "$adapter_dir/../fuse/mount.sh"
 scratch=$(mktemp -d /dev/shm/io-journey-unmount-test.XXXXXX)
 trap 'rm -rf -- "$scratch"' EXIT
 
-# Model umount returning EBUSY for an owned mount. The parent cleanup
-# itself stays unchanged through both attempts.
+# Model probe errors before and after unmount and a mounted path that is busy.
 mountpoint() {
-    [[ "$2" == "$mount_dir" && -f "$fixture/mounted" ]]
+    [[ "${@: -1}" == "$mount_dir" ]] || return 1
+    [[ ! -e "$fixture/probe-error" ]] || return 1
+    [[ -e "$fixture/mounted" ]] && return 0
+    [[ ! -e "$fixture/probe-after-unmount" ]] || return 1
+    return 32
 }
 
 findmnt() {
@@ -68,10 +71,22 @@ for mount_filesystem in ext4 fuse; do
     binary="$run_dir/adapter" socket="$run_dir/control.sock" log="$run_dir/server.log"
     trace_instance= device_id=98765 device=/dev/ublkb98765 server_pid=999999999 node_identity=7:8:9
     mkdir -p "$mount_dir"
-    touch "$fixture/mounted" "$fixture/busy"
+    touch "$fixture/mounted" "$fixture/probe-error" "$fixture/busy"
     fixture_identity="$device ext4"
     if [[ "$mount_filesystem" == fuse ]]; then fixture_identity="$mount_name fuse"; fi
 
+    if (trap cleanup EXIT; exit 0) > "$fixture/probe.log" 2>&1; then
+        printf 'Cleanup accepted an unreadable mount.\n' >&2
+        exit 1
+    fi
+    if [[ ! -d "$run_dir" || ! -e "$fixture/mounted" || -e "$fixture/events" ]]; then
+        printf 'Teardown acted without confirming mount absence.\n' >&2
+        if [[ -e "$fixture/events" ]]; then cat "$fixture/events" >&2; fi
+        exit 1
+    fi
+    grep -F 'Could not check mount state' "$fixture/probe.log" >/dev/null
+
+    rm -- "$fixture/probe-error"
     if (trap cleanup EXIT; exit 0) > "$fixture/first.log" 2>&1; then
         printf 'Cleanup accepted an EBUSY mount.\n' >&2
         exit 1
@@ -84,8 +99,45 @@ for mount_filesystem in ext4 fuse; do
     grep -F 'Preserving the ublk server and device' "$fixture/first.log" >/dev/null
 
     rm -- "$fixture/busy"
+    touch "$fixture/probe-after-unmount"
+    if (trap cleanup EXIT; exit 0) > "$fixture/after-unmount.log" 2>&1; then
+        printf 'Cleanup accepted an unreadable path after unmount.\n' >&2
+        exit 1
+    fi
+    [[ -d "$run_dir" && ! -e "$fixture/mounted" && ! -e "$fixture/stopped" && ! -e "$fixture/deleted" ]]
+    [[ $(cat "$fixture/events") == $'busy\nunmounted' ]]
+    grep -F 'Could not check mount state' "$fixture/after-unmount.log" >/dev/null
+
+    rm -- "$fixture/probe-after-unmount"
     (trap cleanup EXIT; exit 0) > "$fixture/retry.log" 2>&1
     [[ ! -e "$fixture/mounted" && ! -e "$run_dir" ]]
     [[ $(cat "$fixture/events") == $'busy\nunmounted\nstop\nreaped\ndelete' ]]
-    printf '%s cleanup kept the device live through EBUSY and deleted it after unmount.\n' "$mount_filesystem"
+    printf '%s cleanup kept the device live through probe failure and EBUSY and deleted it after unmount.\n' \
+        "$mount_filesystem"
 done
+
+# Isolate the FUSE fallback after an unsuccessful attempt to stop its worker.
+(
+    fixture="$scratch/fuse-worker"
+    mkdir -p "$fixture"
+    mount_dir="$fixture/mount" mount_name=worker binary="$fixture/server" fuse_pid=999999999
+    touch "$fixture/mounted" "$fixture/probe-error"
+    stop_mount() { return 1; }
+    readlink() {
+        [[ "$1" == "/proc/$fuse_pid/exe" ]] || return 1
+        printf '%s\n' "$binary"
+    }
+    grep() { [[ "${@: -1}" == "/proc/$fuse_pid/cmdline" ]]; }
+    kill() {
+        [[ "$1" == -TERM && "$2" == "$fuse_pid" ]] || return 1
+        touch "$fixture/signaled"
+    }
+
+    cleanup_mount 2> "$fixture/probe.log" || true
+    [[ ! -e "$fixture/signaled" ]] || { printf '%s\n' 'FUSE signaled a worker with unknown mount state.' >&2; exit 1; }
+    command grep -F 'Could not check mount state' "$fixture/probe.log" >/dev/null
+    rm -- "$fixture/mounted" "$fixture/probe-error"
+    cleanup_mount || true
+    [[ -e "$fixture/signaled" ]]
+    printf '%s\n' 'FUSE signaled its owned worker only after confirmed unmount.'
+)

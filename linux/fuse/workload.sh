@@ -51,7 +51,7 @@ if (( $# == 8 )); then
         fail 'Use the mount path and identity assigned by the device owner.'
     mount_dir=$7 mount_name=$8
     backend="/dev/ublkb$device_id"
-    ! mountpoint -q "$mount_dir" || fail 'The assigned mount path is already mounted.'
+    mount_absent "$mount_dir" || fail 'Use an inspectable, unmounted run path.'
     ! findmnt -rn -S "$backend" >/dev/null || fail 'The owned device is already mounted.'
     "$binary" format-device "$backend"
     read -r _ _ previous_flush < <("$adapter" control "$socket" stats)
@@ -107,6 +107,6 @@ stop_mount
 inspection=$("$binary" inspect "$backend")
 [[ "$inspection" == "generation 2 allocated 2"$'\n'"\"events.log\""$'\t'"4111"$'\t'"2" ]] ||
     fail "Unexpected recovered allocation: $inspection"
-! mountpoint -q "$mount_dir" || fail 'The owned FUSE mount survived.'
+mount_absent "$mount_dir" || fail 'Could not confirm removal of the FUSE mount.'
 [[ -z "$fuse_pid" ]] || fail 'The owned FUSE server was not reaped.'
 printf 'Verified %s replay, two reachable blocks, and cleanup of the FUSE mount and server.\n' "$mode"

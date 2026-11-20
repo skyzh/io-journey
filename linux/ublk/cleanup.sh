@@ -15,15 +15,8 @@ cleanup() {
         printf '0\n' > "$trace_instance/tracing_on" || cleanup_failed=1
         rmdir "$trace_instance" || cleanup_failed=1
     fi
-    if mountpoint -q "$mount_dir"; then
-        if owned_ublk_mount; then
-            umount -- "$mount_dir" || cleanup_failed=1
-        else
-            cleanup_failed=1
-        fi
-    fi
-    if mountpoint -q "$mount_dir"; then
-        printf 'Preserving the ublk server and device while %s is still mounted.\n' "$mount_dir" >&2
+    if ! unmount_owned_path "$mount_dir" owned_ublk_mount; then
+        printf 'Preserving the ublk server and device until unmount of %s is confirmed.\n' "$mount_dir" >&2
         cleanup_failed=1
     elif [[ -n "$server_pid" ]]; then
         if [[ -z "$device_id" ]]; then
@@ -52,7 +45,7 @@ cleanup() {
         fi
     fi
     if device_remains; then cleanup_failed=1; fi
-    if mountpoint -q "$mount_dir"; then cleanup_failed=1; fi
+    mount_absent "$mount_dir" || cleanup_failed=1
     if [[ -n "$server_pid" && -d "/proc/$server_pid" ]]; then cleanup_failed=1; fi
     if (( status == 0 && cleanup_failed == 0 )); then
         printf 'verified cleanup of ublk device %s, metadata, mount, and server\n' "$device_id"

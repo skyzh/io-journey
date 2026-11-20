@@ -1,4 +1,6 @@
 # Shared private FUSE mount and teardown.
+source "$(dirname -- "${BASH_SOURCE[0]}")/../mount-state.sh"
+
 fuse_mount_matches() {
     local path=$1 name=$2
     local identity
@@ -23,10 +25,7 @@ start_mount() {
 }
 
 stop_mount() {
-    if mountpoint -q "$mount_dir"; then
-        owned_mount || return 1
-        umount -- "$mount_dir" || return 1
-    fi
+    unmount_owned_path "$mount_dir" owned_mount || return 1
     if [[ -n "$fuse_pid" ]]; then
         local status=0 attempt
         for attempt in {1..50}; do
@@ -43,7 +42,7 @@ stop_mount() {
 
 cleanup_mount() {
     if stop_mount; then return 0; fi
-    if [[ -n "$fuse_pid" ]] && ! mountpoint -q "$mount_dir" &&
+    if [[ -n "$fuse_pid" ]] && mount_absent "$mount_dir" &&
         [[ $(readlink "/proc/$fuse_pid/exe") == "$binary" ]] &&
         grep -z -F -x -- "$mount_name" "/proc/$fuse_pid/cmdline" >/dev/null; then
         kill -TERM "$fuse_pid" || return
