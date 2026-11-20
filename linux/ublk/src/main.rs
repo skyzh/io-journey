@@ -182,7 +182,11 @@ fn control_loop(
     stop: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     for stream in streams {
-        let mut stream = stream?;
+        let mut stream = match stream {
+            Ok(stream) => stream,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         let Ok(command) = read_control_command(&stream, timeout) else {
             continue;
         };
@@ -309,20 +313,15 @@ mod tests {
         (server, peer)
     }
 
-    fn check_stats_then_stop(abandoned: UnixStream) {
+    fn check_stats_then_stop(first: io::Result<UnixStream>) {
         let (stats, mut stats_peer) = client(b"stats\n");
         let (stop, mut stop_peer) = client(b"stop\n");
         let state = Mutex::new(LabDevice::new(None).unwrap());
         let mut stopped = false;
-        control_loop(
-            [Ok(abandoned), Ok(stats), Ok(stop)],
-            &state,
-            TEST_TIMEOUT,
-            || {
-                stopped = true;
-                Ok(())
-            },
-        )
+        control_loop([first, Ok(stats), Ok(stop)], &state, TEST_TIMEOUT, || {
+            stopped = true;
+            Ok(())
+        })
         .unwrap();
 
         let mut reply = String::new();
@@ -337,7 +336,7 @@ mod tests {
     #[test]
     fn timed_out_client_does_not_stop_control_loop() {
         let (server, mut peer) = client(b"sta");
-        check_stats_then_stop(server);
+        check_stats_then_stop(Ok(server));
         assert_eq!(peer.read(&mut [0]).unwrap(), 0);
     }
 
@@ -345,7 +344,7 @@ mod tests {
     fn unterminated_stop_does_not_stop_control_loop() {
         let (server, peer) = client(b"stop");
         peer.shutdown(Shutdown::Write).unwrap();
-        check_stats_then_stop(server);
+        check_stats_then_stop(Ok(server));
     }
 
     #[test]
@@ -354,14 +353,33 @@ mod tests {
         command.resize(64, b' ');
         command.extend_from_slice(b"other\n");
         let (server, _peer) = client(&command);
-        check_stats_then_stop(server);
+        check_stats_then_stop(Ok(server));
     }
 
     #[test]
     fn failed_reply_does_not_stop_control_loop() {
         let (server, peer) = client(b"stats\n");
         peer.shutdown(Shutdown::Read).unwrap();
-        check_stats_then_stop(server);
+        check_stats_then_stop(Ok(server));
+    }
+
+    #[test]
+    fn interrupted_accept_keeps_serving_until_explicit_stop() {
+        check_stats_then_stop(Err(io::ErrorKind::Interrupted.into()));
+    }
+
+    #[test]
+    fn terminal_accept_error_preserves_the_error() {
+        let (server, _peer) = client(b"stop\n");
+        let state = Mutex::new(LabDevice::new(None).unwrap());
+        let error = control_loop(
+            [Err(io::Error::from_raw_os_error(libc::EBADF)), Ok(server)],
+            &state,
+            TEST_TIMEOUT,
+            || panic!("a terminal accept error must not reach the stop command"),
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EBADF));
     }
 
     fn check_failed_worker(state: &Mutex<LabDevice>, message: &str) {
