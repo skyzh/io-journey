@@ -126,7 +126,8 @@ mod tests {
             fs.sync(&mut trace).unwrap();
         }
 
-        let mut queue = BlockQueue::new(Ftl::open(queue.power_cut()), NonZeroUsize::MIN);
+        let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
+        let mut queue = BlockQueue::new(ftl, NonZeroUsize::MIN);
         let mut fs = FileSystem::open(&mut queue, &mut trace).unwrap();
         assert_eq!(fs.read_all(&mut trace).unwrap(), expected);
     }
