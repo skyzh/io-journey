@@ -9,6 +9,8 @@ fail() {
 [[ $# == 11 && $(id -u) == 0 && $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs &&
    $(readlink /proc/self/ns/mnt) != "$(readlink /proc/1/ns/mnt)" ]] ||
     fail 'Use the append benchmark in a private guest mount namespace.'
+case_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+source "$case_dir/../mount-state.sh"
 filesystem=$1 engine=$2 group=$3 output=$4
 adapter=$5 socket=$6 server_pid=$7 identity=$8 device_id=$9
 [[ "$device_id" =~ ^[0-9]+$ ]] || fail 'Invalid lab device ID.'
@@ -17,7 +19,7 @@ mount_dir=${10} mount_name=${11}
 [[ "$mount_dir" == "${socket%/*}/mount" && -d "$mount_dir" &&
    "$mount_name" == "$(basename -- "${socket%/*}")" ]] ||
     fail 'Use the mount path and identity assigned by the device owner.'
-! mountpoint -q "$mount_dir" || fail 'The assigned mount path is already mounted.'
+mount_absent "$mount_dir" || fail 'Use an inspectable, unmounted run path.'
 backend="/dev/ublkb$device_id"
 ! findmnt -rn -S "$backend" >/dev/null || fail 'The owned device is already mounted.'
 [[ -d "$output" && $(findmnt -n -o FSTYPE -T "$output") == tmpfs ]] ||
@@ -26,7 +28,6 @@ append=$(realpath -- "${IO_JOURNEY_APPEND_BIN:?}")
 [[ -x "$append" && $(findmnt -n -o FSTYPE -T "$append") == tmpfs ]] ||
     fail 'Use an append binary from guest tmpfs.'
 
-case_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 run_dir=$(mktemp -d /dev/shm/io-journey-append-case.XXXXXX)
 fuse_pid=
 
@@ -34,11 +35,12 @@ start_mount() {
     mount -t ext4 "$backend" "$mount_dir"
 }
 
+owned_ext4_mount() {
+    [[ $(findmnt -nr -o SOURCE,FSTYPE -M "$mount_dir") == "$backend ext4" ]]
+}
+
 stop_mount() {
-    if mountpoint -q "$mount_dir"; then
-        [[ $(findmnt -nr -o SOURCE,FSTYPE -M "$mount_dir") == "$backend ext4" ]] || return 1
-        umount -- "$mount_dir"
-    fi
+    unmount_owned_path "$mount_dir" owned_ext4_mount
 }
 
 cleanup_mount() {
@@ -94,7 +96,7 @@ blockdev --flushbufs "$backend"
 start_mount
 timeout 20 "$append" verify "$mount_dir"
 stop_mount
-! mountpoint -q "$mount_dir" && [[ -z "$fuse_pid" ]] || fail 'The owned mount or server survived.'
+mount_absent "$mount_dir" && [[ -z "$fuse_pid" ]] || fail 'Could not verify mount and server cleanup.'
 (
     set -o noclobber
     printf '%s\t%s\t%s\n' "$filesystem" "$acknowledged_flush" "$(cat "$run_dir/measurement.tsv")" > "$output/result.tsv"

@@ -63,6 +63,7 @@ device=
 trace_instance=
 mkdir "$mount_dir"
 source "$adapter_dir/build-env.sh"
+source "$adapter_dir/../mount-state.sh"
 source "$adapter_dir/cleanup.sh"
 if [[ "$mount_filesystem" == fuse ]]; then
     source "$adapter_dir/../fuse/mount.sh"
@@ -185,6 +186,7 @@ printf 'saved workload checkpoint at flush %s before unmount\n' "$saved_flushes"
 
 "$binary" tail "$mount_dir"
 umount "$mount_dir"
+mount_absent "$mount_dir" || fail 'Could not confirm unmount before reopening the checkpoint.'
 blockdev --flushbufs "$device"
 later=$(control stats)
 read -r before_reads _ later_flushes <<< "$later"
