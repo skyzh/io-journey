@@ -33,6 +33,7 @@ pub struct LabDevice {
     counts: Counts,
     saved: Option<(Counts, FlashImage)>,
     profile: Option<Profile>,
+    worker_failure: Option<String>,
 }
 
 impl LabDevice {
@@ -45,7 +46,19 @@ impl LabDevice {
             counts: Counts::default(),
             saved: None,
             profile: profile.map(Profile::new),
+            worker_failure: None,
         })
+    }
+
+    pub fn fail_worker(&mut self, message: String) {
+        self.worker_failure = Some(message);
+    }
+
+    pub fn check_worker(&self) -> io::Result<()> {
+        match &self.worker_failure {
+            Some(message) => Err(io::Error::other(message.clone())),
+            None => Ok(()),
+        }
     }
 
     pub fn start_profile(&mut self) -> io::Result<()> {

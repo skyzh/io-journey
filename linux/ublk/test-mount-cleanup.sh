@@ -70,6 +70,7 @@ for mount_filesystem in ext4 fuse; do
     mount_dir="$run_dir/mount" mount_name="${run_dir##*/}"
     binary="$run_dir/adapter" socket="$run_dir/control.sock" log="$run_dir/server.log"
     trace_instance= device_id=98765 device=/dev/ublkb98765 server_pid=999999999 node_identity=7:8:9
+    server_exit_status=0
     mkdir -p "$mount_dir"
     touch "$fixture/mounted" "$fixture/probe-error" "$fixture/busy"
     fixture_identity="$device ext4"
@@ -141,3 +142,20 @@ done
     [[ -e "$fixture/signaled" ]]
     printf '%s\n' 'FUSE signaled its owned worker only after confirmed unmount.'
 )
+
+fixture="$scratch/failed-server"
+run_dir="$fixture/owned-run"
+mount_dir="$run_dir/mount" mount_name="${run_dir##*/}"
+binary="$run_dir/adapter" socket="$run_dir/control.sock" log="$run_dir/server.log"
+mount_filesystem=ext4 trace_instance= device_id=98765 device=/dev/ublkb98765
+server_pid=999999999 node_identity=7:8:9 server_exit_status=1
+mkdir -p "$mount_dir"
+touch "$fixture/stopped"
+if (trap cleanup EXIT; exit 0) > "$fixture/exit.log" 2>&1; then
+    printf '%s\n' 'Cleanup reported success after a failed server.' >&2
+    exit 1
+fi
+[[ -d "$run_dir" && -e "$fixture/deleted" ]]
+[[ $(cat "$fixture/events") == $'reaped\ndelete' ]]
+grep -F 'ublk server exited with status 1' "$fixture/exit.log" >/dev/null
+printf '%s\n' 'A failed server was reaped and deleted, with its failure preserved.'

@@ -62,6 +62,7 @@ socket="$run_dir/control.sock"
 log="$run_dir/server.log"
 binary="$run_dir/target/debug/io-journey-ublk"
 server_pid=
+server_exit_status=0
 device_id=
 node_identity=
 device=
@@ -105,7 +106,7 @@ reap_server() {
     local attempt
     for attempt in {1..50}; do
         if server_exited; then
-            wait "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || server_exit_status=$?
             return 0
         fi
         sleep 0.1
