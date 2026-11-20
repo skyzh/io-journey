@@ -81,6 +81,26 @@ exactly the bytes covered by the receipt, in order and with valid
 checksums. This checks the kernel ext4 path and the learner FUSE
 filesystem backed by the learner queue and FTL.
 
+In one guest sweep every case recovered all 320 acknowledged records.
+Each cell below gives the two observations for its engine. The raw
+runner report also includes p99 and the saved checkpoint for each run.
+
+| Filesystem and group | Engine | Records per second | Acknowledgement p50, µs |
+| --- | --- | --- | --- |
+| ext4, 4 | sync | 6791, 6830 | 591, 584 |
+| ext4, 4 | io_uring | 6525, 6436 | 613, 620 |
+| ext4, 32 | sync | 33788, 34466 | 889, 903 |
+| ext4, 32 | io_uring | 35902, 41744 | 892, 756 |
+| FUSE, 4 | sync | 8133, 8122 | 497, 477 |
+| FUSE, 4 | io_uring | 7990, 8043 | 506, 499 |
+| FUSE, 32 | sync | 31483, 17434 | 1002, 1846 |
+| FUSE, 32 | io_uring | 28969, 29736 | 1074, 1074 |
+
+Larger groups increased throughput and time to acknowledgement in
+this sweep. The engine comparison varied with filesystem, group size,
+and repetition. The FUSE synchronous group-32 runs also illustrate
+how much two repetitions can differ with the same inputs.
+
 ## Follow the acknowledgement across layers
 
 Use one case's receipt and the printed ublk flush. The app writes a
@@ -99,3 +119,10 @@ single kernel tag or NAND page. Use the observed flush boundary and
 the recovery result for the end-to-end check. Use the fio lab for
 measured guest block events and the demo for individual NAND program
 and map events.
+
+In the first FUSE synchronous group-4 run, the final acknowledged
+record had ID 319 and offset 163,328. The total receipt was 163,840
+bytes. The runner printed ublk tag 3, inner request 1,338, and FTL
+flush 406 for the captured checkpoint. Reopening that checkpoint
+verified the same 320 records. The observed link is the receipt
+and flush. The physical page holding record 319 stays unknown.
