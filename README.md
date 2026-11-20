@@ -84,7 +84,8 @@ sync. Reopening after an error recovers the last flushed image.
 An explicit caller submits requests and retrieves their completions.
 Filesystem helpers drive their own requests. Switching between these
 drivers while requests are pending returns `WouldBlock`. Drain the queue
-with the current driver before switching.
+with the current driver before switching. Both submission and completion
+check the driver before advancing work.
 
 `NandGeometry::new(erase_blocks, pages_per_erase_block)` sets the physical
 layout. `Ftl::with_geometry(logical_blocks, geometry)` requires room for an

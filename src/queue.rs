@@ -47,8 +47,8 @@ pub(crate) enum SubmitError {
     Rejected(io::Error),
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Driver {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Driver {
     Explicit,
     Filesystem,
 }
@@ -176,16 +176,8 @@ impl BlockQueue {
         if self.failed {
             return Err(SubmitError::Rejected(stopped_queue()));
         }
-        if self
-            .pending
-            .front()
-            .is_some_and(|request| request.submission.driver != submission.driver)
-        {
-            return Err(SubmitError::Rejected(io::Error::new(
-                io::ErrorKind::WouldBlock,
-                "complete the queued requests before switching drivers",
-            )));
-        }
+        self.require_driver(submission.driver)
+            .map_err(SubmitError::Rejected)?;
         if self.pending.len() == self.depth.get() {
             return Err(SubmitError::Full(submission));
         }
@@ -203,19 +195,40 @@ impl BlockQueue {
         Ok(id)
     }
 
-    /// Advance the oldest request, including all of its children. Every
-    /// accepted request has a completion, even if an earlier failure cancels it.
-    pub(crate) fn complete_next(&mut self, trace: &mut Trace) -> Option<Completion> {
-        let request = self.pending.pop_front()?;
+    fn require_driver(&self, driver: Driver) -> io::Result<()> {
+        if self
+            .pending
+            .front()
+            .is_some_and(|request| request.submission.driver != driver)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "complete the queued requests before switching drivers",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Advance the oldest request with its owning driver. The outer result
+    /// rejects a driver mismatch. Execution errors retain the request ID.
+    pub(crate) fn complete_next(
+        &mut self,
+        driver: Driver,
+        trace: &mut Trace,
+    ) -> io::Result<Option<Completion>> {
+        self.require_driver(driver)?;
+        let Some(request) = self.pending.pop_front() else {
+            return Ok(None);
+        };
         let id = request.id;
         let operation = request.submission.operation;
         let label = operation.label();
         if self.failed {
             trace.push(format!("queue  cancel #{id} {label}"));
-            return Some(Completion {
+            return Ok(Some(Completion {
                 id,
                 result: Err(stopped_queue()),
-            });
+            }));
         }
 
         trace.push(format!("queue  dispatch #{id} {label}"));
@@ -229,7 +242,7 @@ impl BlockQueue {
             self.failed = true;
             trace.push(format!("queue  failed #{id} {label}"));
         }
-        Some(Completion { id, result })
+        Ok(Some(Completion { id, result }))
     }
 
     fn execute(&mut self, operation: Operation, trace: &mut Trace) -> io::Result<Response> {
@@ -267,7 +280,9 @@ impl BlockQueue {
                         "queue  backpressure at depth {}. Completing the oldest request",
                         self.depth
                     ));
-                    self.complete_next(trace).expect("full queue").result?;
+                    self.complete_next(Driver::Filesystem, trace)?
+                        .expect("full queue")
+                        .result?;
                     submission = request;
                 }
             }
@@ -275,7 +290,7 @@ impl BlockQueue {
     }
 
     fn wait(&mut self, id: RequestId, trace: &mut Trace) -> io::Result<Response> {
-        while let Some(completion) = self.complete_next(trace) {
+        while let Some(completion) = self.complete_next(Driver::Filesystem, trace)? {
             let value = completion.result?;
             if completion.id == id {
                 return Ok(value);
@@ -322,13 +337,19 @@ mod tests {
             panic!("a third pending request must receive backpressure");
         };
         assert_eq!(queue.pending.len(), 2);
-        let completion = queue.complete_next(&mut trace).unwrap();
+        let completion = queue
+            .complete_next(Driver::Explicit, &mut trace)
+            .unwrap()
+            .unwrap();
         assert_eq!(completion.id, earlier);
         assert!(matches!(completion.result.unwrap(), Response::Done));
         let later = queue.try_submit(later, &mut trace).unwrap();
         assert_eq!(queue.pending.len(), 2);
         for id in [flush, later] {
-            let completion = queue.complete_next(&mut trace).unwrap();
+            let completion = queue
+                .complete_next(Driver::Explicit, &mut trace)
+                .unwrap()
+                .unwrap();
             assert_eq!(completion.id, id);
             assert!(matches!(completion.result.unwrap(), Response::Done));
         }
@@ -404,14 +425,20 @@ mod tests {
         assert_eq!(trace.len(), events);
         assert_eq!(queue.next_id, next_id);
 
-        let completion = queue.complete_next(&mut trace).unwrap();
+        let completion = queue
+            .complete_next(Driver::Explicit, &mut trace)
+            .unwrap()
+            .unwrap();
         assert_eq!(completion.id, read_id);
         let Response::Read(blocks) = completion.result.unwrap() else {
             panic!("expected the read payload");
         };
         assert_eq!(blocks.len(), 1);
         assert_eq!(*blocks[0], [0x42; BLOCK_BYTES]);
-        assert!(queue.complete_next(&mut trace).is_none());
+        assert!(queue
+            .complete_next(Driver::Explicit, &mut trace)
+            .unwrap()
+            .is_none());
         queue.flush(&mut trace).unwrap();
     }
 
@@ -423,6 +450,30 @@ mod tests {
     #[test]
     fn sync_flush_yields_before_advancing_a_full_explicit_queue() {
         check_explicit_read_survives_a_sync_flush(NonZeroUsize::MIN);
+    }
+
+    #[test]
+    fn explicit_completion_yields_before_advancing_a_filesystem_write() {
+        let mut trace = Vec::new();
+        let depth = NonZeroUsize::MIN;
+        let mut queue = BlockQueue::new(Ftl::new(), depth);
+        queue
+            .write(2, Box::new([0x73; BLOCK_BYTES]), &mut trace)
+            .unwrap();
+        let events = trace.len();
+
+        let error = match queue.complete_next(Driver::Explicit, &mut trace) {
+            Err(error) => error,
+            Ok(_) => panic!("explicit completion must leave the filesystem write pending"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(trace.len(), events);
+        assert_eq!(queue.pending.len(), 1);
+        queue.flush(&mut trace).unwrap();
+
+        let ftl = Ftl::open(queue.power_cut(), &mut trace).unwrap();
+        let mut reopened = BlockQueue::new(ftl, depth);
+        assert_eq!(*reopened.read(2, &mut trace).unwrap(), [0x73; BLOCK_BYTES]);
     }
 
     #[test]
@@ -443,7 +494,10 @@ mod tests {
             .try_submit(write_request(2, &[4]), &mut trace)
             .unwrap();
 
-        let completion = queue.complete_next(&mut trace).unwrap();
+        let completion = queue
+            .complete_next(Driver::Explicit, &mut trace)
+            .unwrap()
+            .unwrap();
         assert_eq!(completion.id, write);
         let error = completion.result.unwrap_err();
         assert_eq!(
@@ -457,14 +511,20 @@ mod tests {
         );
         assert_eq!(*queue.ftl.read(0, &mut trace).unwrap(), [2; BLOCK_BYTES]);
         for id in [flush, later] {
-            let completion = queue.complete_next(&mut trace).unwrap();
+            let completion = queue
+                .complete_next(Driver::Explicit, &mut trace)
+                .unwrap()
+                .unwrap();
             assert_eq!(completion.id, id);
             assert_eq!(
                 completion.result.unwrap_err().kind(),
                 io::ErrorKind::BrokenPipe
             );
         }
-        assert!(queue.complete_next(&mut trace).is_none());
+        assert!(queue
+            .complete_next(Driver::Explicit, &mut trace)
+            .unwrap()
+            .is_none());
         assert_eq!(
             queue.flush(&mut trace).unwrap_err().kind(),
             io::ErrorKind::BrokenPipe
