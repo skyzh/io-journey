@@ -71,6 +71,9 @@ fn run(mode: &str, group: usize, directory: &Path) -> io::Result<()> {
     for cohort in records[..WARM_RECORDS].chunks(group) {
         commit_group(cohort, &mut write, &mut sync, &mut warm)?;
     }
+    if warm.len() != WARM_RECORDS {
+        return Err(io::Error::other("warmup did not acknowledge every record"));
+    }
 
     let mut receipts = Vec::with_capacity(MEASURED_RECORDS);
     let start = Instant::now();
@@ -86,10 +89,16 @@ fn run(mode: &str, group: usize, directory: &Path) -> io::Result<()> {
         }
     }
     let elapsed = start.elapsed();
+    if receipts.len() != MEASURED_RECORDS {
+        return Err(io::Error::other(
+            "measurement did not acknowledge every record",
+        ));
+    }
     receipts.sort_unstable();
     let records_per_second = MEASURED_RECORDS as f64 / elapsed.as_secs_f64();
     println!(
-        "{mode}\t{group}\t{DEPTH}\t{WARM_RECORDS}\t{}\t{}\t{}\t{records_per_second:.2}\t{}\t{}",
+        "{mode}\t{group}\t{DEPTH}\t{}\t{}\t{}\t{}\t{records_per_second:.2}\t{}\t{}",
+        warm.len(),
         receipts.len(),
         receipts.len() * RECORD_BYTES,
         elapsed.as_nanos(),

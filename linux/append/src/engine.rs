@@ -202,6 +202,42 @@ impl Drop for Uring {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_failed_wait_or_invalid_set_keeps_unproven_buffers() {
+        let wave = [request(1), request(2)];
+        let size = wave[0].bytes.len();
+        for (second_id, expected) in [
+            (None, io::ErrorKind::Other),
+            (Some(1), io::ErrorKind::InvalidData),
+            (Some(99), io::ErrorKind::InvalidData),
+        ] {
+            let mut retained = wave
+                .iter()
+                .map(|item| item.bytes.clone())
+                .collect::<Vec<_>>();
+            let result = retire_ring_wave(&wave, &mut retained, |completed| {
+                if completed.is_empty() {
+                    completed.push(Completion {
+                        id: 1,
+                        result: Ok(size),
+                    });
+                } else {
+                    let id = second_id.ok_or_else(|| io::Error::other("injected poll failure"))?;
+                    completed.push(Completion {
+                        id,
+                        result: Ok(size),
+                    });
+                }
+                Ok(())
+            });
+            assert_eq!(result.unwrap_err().kind(), expected);
+            assert_eq!(retained.len(), wave.len());
+            for item in &wave {
+                assert_eq!(Arc::strong_count(&item.bytes), 2);
+            }
+        }
+    }
+
     fn request(id: u64) -> Request {
         Request {
             id,
