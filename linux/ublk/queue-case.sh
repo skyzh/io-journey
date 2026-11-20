@@ -6,8 +6,7 @@ run_queue_case() {
 
     IFS=: read -r major minor < "$sys_block/dev"
     dev_number=$((major * (1 << 20) + minor))
-    trace_instance="/sys/kernel/tracing/instances/${run_dir##*/}"
-    mkdir "$trace_instance"
+    create_trace_instance "/sys/kernel/tracing/instances/${run_dir##*/}"
     printf '0\n' > "$trace_instance/tracing_on"
     printf 'mono\n' > "$trace_instance/trace_clock"
     printf '2048\n' > "$trace_instance/buffer_size_kb"
@@ -28,6 +27,11 @@ run_queue_case() {
     rmdir "$trace_instance"
     [[ ! -e "$trace_instance" ]] || fail 'Trace instance survived the run.'
     trace_instance=
+}
+
+create_trace_instance() {
+    mkdir -- "$1" || return
+    trace_instance=$1
 }
 
 capture_queue_case() {

@@ -63,12 +63,12 @@ zero extra read or write bytes and zero trace drops.
 
 | Case | Requested depth | fio depth buckets | ms | MiB/s | Read p99 µs |
 | --- | ---: | --- | ---: | ---: | ---: |
-| 4 KiB FIFO | 1 | 1: 100.0% | 30 | 533.3 | 14.9 |
-| 4 KiB FIFO, pair 1 | 8 | 4: 52.7%, 8: 47.3% | 19 | 842.1 | 79.4 |
-| 4 KiB read priority, pair 1 | 8 | 8: 100.0% | 18 | 888.9 | 52.0 |
-| 4 KiB read priority, pair 2 | 8 | 4: 95.9%, 8: 4.1% | 20 | 800.0 | 81.4 |
-| 4 KiB FIFO, pair 2 | 8 | 4: 97.5%, 8: 2.5% | 19 | 842.1 | 53.0 |
-| 16 KiB FIFO | 8 | 4: 96.9%, 8: 3.1% | 11 | 1454.5 | 136.2 |
+| 4 KiB FIFO | 1 | 1: 100.0% | 28 | 571.4 | 17.8 |
+| 4 KiB FIFO, pair 1 | 8 | 4: 99.6%, 8: 0.4% | 18 | 888.9 | 77.3 |
+| 4 KiB read priority, pair 1 | 8 | 4: 27.1%, 8: 72.9% | 19 | 842.1 | 50.9 |
+| 4 KiB read priority, pair 2 | 8 | 2: 0.4%, 4: 17.6%, 8: 82.0% | 19 | 842.1 | 78.3 |
+| 4 KiB FIFO, pair 2 | 8 | 8: 100.0% | 18 | 888.9 | 57.6 |
+| 16 KiB FIFO | 8 | 4: 98.4%, 8: 1.6% | 11 | 1454.5 | 134.1 |
 
 Each 4 KiB case transferred 11,677,696 read and 5,099,520 write bytes.
 The 16 KiB case transferred 11,845,632 read and 4,931,584 write bytes.
@@ -77,16 +77,17 @@ requests Linux merged before sending them to the server.
 
 | Case | Server read wait / service p99 µs | Reads advanced | Guest joined p99 µs | Guest joins | NAND programs / copies / erases |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 4 KiB FIFO, depth 1 | 0.0 / 3.5 | 0 | 13.0 | 4096 | 1245 / 0 / 0 |
-| 4 KiB FIFO, pair 1 | 21.6 / 4.0 | 0 | 48.0 | 4072 | 1245 / 0 / 0 |
-| 4 KiB read priority, pair 1 | 12.6 / 6.6 | 793 | 43.0 | 4071 | 1245 / 0 / 0 |
-| 4 KiB read priority, pair 2 | 13.9 / 6.2 | 901 | 47.0 | 4076 | 1245 / 0 / 0 |
-| 4 KiB FIFO, pair 2 | 20.8 / 3.4 | 0 | 41.0 | 4077 | 1245 / 0 / 0 |
-| 16 KiB FIFO | 79.8 / 8.5 | 0 | 113.0 | 1015 | 1204 / 0 / 0 |
+| 4 KiB FIFO, depth 1 | 0.1 / 3.3 | 0 | 12.0 | 4096 | 1245 / 0 / 0 |
+| 4 KiB FIFO, pair 1 | 19.8 / 3.1 | 0 | 44.0 | 4089 | 1245 / 0 / 0 |
+| 4 KiB read priority, pair 1 | 14.0 / 7.6 | 796 | 43.0 | 4077 | 1245 / 0 / 0 |
+| 4 KiB read priority, pair 2 | 11.1 / 6.7 | 827 | 46.0 | 4071 | 1245 / 0 / 0 |
+| 4 KiB FIFO, pair 2 | 25.8 / 7.9 | 0 | 47.0 | 4071 | 1245 / 0 / 0 |
+| 16 KiB FIFO | 78.3 / 11.8 | 0 | 112.0 | 1012 | 1204 / 0 / 0 |
 
-Read priority shortened server read-wait p99 in both pairs. Server read
-service p99 rose, and both fio throughput and read p99 moved in opposite
-directions between pairs. The achieved depth also varied across the short
-11–30 ms fio jobs. These runs demonstrate that the policy changes order
-and affects wait inside the server. End-to-end speedup remains unresolved.
+Read priority shortened server read-wait p99 in both pairs. Fio read p99
+fell in the first pair and rose in the second. Throughput fell from 888.9
+to 842.1 MiB/s in both pairs, each a one-millisecond difference in fio’s
+elapsed time. The achieved depth varied across the short 11–28 ms jobs.
+These runs demonstrate that the policy changes order and affects wait
+inside the server. End-to-end speedup remains unresolved.
 The NAND counters describe the simulator and measure no physical SSD I/O.

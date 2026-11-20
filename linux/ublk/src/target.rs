@@ -9,7 +9,7 @@ use io_journey::nand::{Block, NandGeometry, BLOCK_BYTES};
 use io_journey::queue::{BlockQueue, Driver, Operation, Response, SubmitError};
 use io_journey::Trace;
 use libublk::helpers::IoBuf;
-use libublk::io::{UblkDev, UblkQueue};
+use libublk::io::{UblkDev, UblkIOCtx, UblkQueue};
 use libublk::{sys, BufDesc, BufDescList, UblkError, UblkIORes};
 
 use crate::profile::{Profile, Timing};
@@ -195,23 +195,58 @@ pub fn run_queue(
     let queue = UblkQueue::new(qid, dev)?
         .submit_fetch_commands_unified(BufDescList::Slices(Some(&buffers)))?;
     let mut batch = Vec::with_capacity(usize::from(QUEUE_DEPTH));
-    queue.wait_and_handle_io(|queue, tag, context| {
-        if context.is_first_cqe() && !batch.is_empty() {
-            service_batch(queue, &mut buffers, state, policy, &mut batch);
+    let outcome = loop {
+        let result = dispatch_batch(
+            &mut batch,
+            |pending| {
+                // This target submits only ublk fetch and commit commands. The
+                // raw batch also includes aborts, which carry no new request.
+                queue.flush_and_wake_io_tasks(
+                    |user_data, cqe, _| {
+                        accept_command(pending, cqe.result(), || {
+                            let tag = UblkIOCtx::user_data_to_tag(user_data) as u16;
+                            assert!(queue.owns_tag(tag));
+                            let iod = queue.get_iod(tag);
+                            Arrival {
+                                tag,
+                                op: iod.op_flags & 0xff,
+                                sector: iod.start_sector,
+                                sectors: iod.nr_sectors,
+                                at: Instant::now(),
+                            }
+                        });
+                    },
+                    1,
+                )
+            },
+            |pending| service_batch(&queue, &mut buffers, state, policy, pending),
+        );
+        match result {
+            Ok(()) => {}
+            Err(UblkError::QueueIsDown) => break Ok(()),
+            Err(error) => break Err(error),
         }
-        let iod = queue.get_iod(tag);
-        batch.push(Arrival {
-            tag,
-            op: iod.op_flags & 0xff,
-            sector: iod.start_sector,
-            sectors: iod.nr_sectors,
-            at: Instant::now(),
-        });
-        if context.is_last_cqe() {
-            service_batch(queue, &mut buffers, state, policy, &mut batch);
-        }
-    });
+    };
+    for tag in queue.tags() {
+        queue.unregister_io_buf(tag);
+    }
+    outcome
+}
+
+fn dispatch_batch(
+    batch: &mut Vec<Arrival>,
+    receive: impl FnOnce(&mut Vec<Arrival>) -> Result<i32, UblkError>,
+    dispatch: impl FnOnce(&mut Vec<Arrival>),
+) -> Result<(), UblkError> {
+    receive(batch)?;
+    dispatch(batch);
     Ok(())
+}
+
+fn accept_command(batch: &mut Vec<Arrival>, result: i32, describe: impl FnOnce() -> Arrival) {
+    if result == sys::UBLK_IO_RES_OK as i32 {
+        batch.push(describe());
+    }
 }
 
 fn service_batch(
@@ -289,5 +324,31 @@ mod tests {
                 io::ErrorKind::InvalidInput
             );
         }
+    }
+
+    #[test]
+    fn a_skipped_final_completion_leaves_no_accepted_tag_waiting() {
+        let mut batch = Vec::new();
+        let mut serviced = Vec::new();
+        dispatch_batch(
+            &mut batch,
+            |pending| {
+                accept_command(pending, sys::UBLK_IO_RES_OK as i32, || Arrival {
+                    tag: 3,
+                    op: sys::UBLK_IO_OP_READ,
+                    sector: 0,
+                    sectors: 8,
+                    at: Instant::now(),
+                });
+                accept_command(pending, sys::UBLK_IO_RES_ABORT, || {
+                    panic!("aborted tag does not describe a request")
+                });
+                Ok(2)
+            },
+            |pending| serviced.extend(pending.drain(..).map(|request| request.tag)),
+        )
+        .unwrap();
+        assert_eq!(serviced, [3]);
+        assert!(batch.is_empty());
     }
 }
