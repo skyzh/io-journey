@@ -52,6 +52,8 @@ demo   verified the acknowledged prefix after both cuts
 Continue with the [FTL chapter](course/01-ftl.md) and run your implementation
 under ext4. The [independent checkpoints](course/README.md#independent-checkpoints)
 and the [reference ext4 lab](linux/ublk/README.md) are also available.
+The optional [NAND timing lab](course/01c-nand-latency.md) uses virtual time
+to show why programs and garbage collection can delay otherwise identical reads.
 
 ## Follow a record
 

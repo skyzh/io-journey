@@ -10,6 +10,9 @@ use crate::Trace;
 mod mapping;
 use mapping::Mapping;
 
+#[cfg(not(feature = "learner"))]
+pub mod latency;
+
 #[cfg_attr(feature = "learner", path = "../course/learner/ftl.rs")]
 #[cfg_attr(not(feature = "learner"), path = "ftl/reference.rs")]
 mod implementation;
