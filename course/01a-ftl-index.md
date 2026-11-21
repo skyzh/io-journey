@@ -1,6 +1,6 @@
 # Track free space and live pages
 
-Finish [NAND to SSD](01-ftl.md) and run `./course/learner.sh check`.
+Finish [NAND to SSD](01-ftl.md) and run `cargo xtask learner check`.
 If you used the original mutable map in the first chapter, your edits
 still work on the scan path. Before you enable indexing, use
 `self.map.replace(lba, page)` for mapping updates in your FTL. In the
@@ -18,7 +18,7 @@ your working FTL. The new check compares the index with the physical
 pages and mappings after each transition.
 
 ```sh
-./course/learner.sh index
+cargo xtask learner index
 ```
 
 The starter fails on its first programmed page. Make these updates at
@@ -44,11 +44,11 @@ Run the comparison on Linux from the checkout. Redirect the CSV to a
 path on guest tmpfs if you want to save it.
 
 ```sh
-./course/measure-collection.sh
+cargo xtask ftl-collection
 ```
 
 The script compares the two supplied reference implementations. Use
-`./course/learner.sh index` to check your own code. The benchmark checks
+`cargo xtask learner index` to check your own code. The benchmark checks
 the complete reference trace and its exact page locations.
 
 Both complete paths run the same fixture from the reference FTL

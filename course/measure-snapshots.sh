@@ -2,7 +2,7 @@
 set -euo pipefail
 
 [[ $# == 1 && ( "$1" == timing || "$1" == heap ) ]] || {
-    printf '%s\n' 'Use ./course/measure-snapshots.sh timing or heap.' >&2
+    printf '%s\n' 'Use cargo xtask ftl-snapshots timing or heap.' >&2
     exit 2
 }
 if [[ $(findmnt -n -o FSTYPE -T /dev/shm) != tmpfs ]]; then

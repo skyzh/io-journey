@@ -7,32 +7,48 @@ and run that code on an ext4 mount.
 
 ## Set up Linux
 
-Use a Linux checkout with Bash, util-linux, and a Rust toolchain with
-Cargo. On a Mac with an OrbStack machine named `ubuntu`, open a guest shell
-from the course checkout with `orb -m ubuntu`. Run the following from the
-checkout inside Linux.
+Use a Linux checkout with a Rust toolchain and Cargo. The lab helpers need
+Bash and util-linux. On a Mac with an OrbStack machine named `ubuntu`, open
+a guest shell from the course checkout with `orb -m ubuntu`.
+
+From the checkout inside Linux, check the toolchain and RAM filesystem.
 
 ```sh
 rustc --version
 cargo --version
 findmnt -n -o FSTYPE,OPTIONS -T /dev/shm
-ls course/learner.sh course/learner/ftl.rs
 ```
 
-The filesystem command should report `tmpfs` without `noexec`. Cargo
-uses it for temporary and build files and executes the compiled checks
-there. The demo and first chapter checks run as an ordinary user with
-no third-party Rust dependencies. The course was checked on OrbStack Ubuntu
-26.04.1 arm64 with Rust 1.93.1. The first ext4 lab lists the extra kernel
-tools and privileges it needs.
+The filesystem command should report `tmpfs` without `noexec`. Set these
+paths once in each guest shell so Cargo also builds the command runner in
+RAM.
+
+```sh
+export CARGO_HOME="/dev/shm/io-journey-cargo-$USER"
+export CARGO_TARGET_DIR="/dev/shm/io-journey-target-$USER"
+export TMPDIR=/dev/shm
+```
+
+Run the demo and offline checks as an ordinary user. The demo and first
+chapter checks have no third-party Rust dependencies. The course was
+checked on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
+
+### Mounted labs
+
+Run these from the checkout in a root Linux shell. On a Mac, open it with
+`orb -m ubuntu -u root` from the checkout. Repeat the tmpfs setup above
+in that shell. Each mounted Cargo command uses a private mount namespace.
+The lab pages list their kernel and tool prerequisites.
 
 ## Run the reference and begin your implementation
 
-Run the [append-and-recover demo](../README.md#run-the-demo). Inside the
-guest, use the command beginning with `bash -eu -c`. From the Mac checkout
-shell, use the full `orb -m ubuntu` command. Find the two acknowledged
-records, the visible unflushed record, and the two records that survive
-the cuts.
+```sh
+cargo xtask demo
+```
+
+Find the two acknowledged records, the visible unflushed record, and
+the two records that survive the cuts. Use `cargo xtask --help` to see
+the available commands.
 
 Keep editing in this checkout as you work through the [chapters](README.md).
 Start with [NAND to SSD](01-ftl.md), where the first check exercises supplied

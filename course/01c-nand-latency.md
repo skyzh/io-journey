@@ -1,12 +1,11 @@
 # Read latency under NAND contention
 
-Use a clean checkout at the repository root in the Linux guest. You can
-run `cargo xtask nand-latency` before starting any chapter work. It uses
-the reference FTL. With executable tmpfs at `/dev/shm` as in
-[Start here](START.md), direct Cargo's build files there for this run.
+From a clean checkout, complete the [tmpfs setup](START.md#set-up-linux)
+in the Linux guest and run this from the repository root. The lab uses
+the reference FTL and is ready before you start any chapter work.
 
 ```sh
-env CARGO_HOME=/dev/shm/io-journey-cargo CARGO_TARGET_DIR=/dev/shm/io-journey-target TMPDIR=/dev/shm cargo xtask nand-latency
+cargo xtask nand-latency
 ```
 
 All NAND pages and simulated events are held in RAM. The default virtual

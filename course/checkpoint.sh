@@ -5,8 +5,8 @@ repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 baseline=e2c2d782ae036d6f67359b0cff8cabc2a6eba7dc
 
 usage() {
-    printf '%s\n' 'course/checkpoint.sh prepare {ftl|queue|filesystem|log}' \
-        'course/checkpoint.sh {previous|check|faults} LAB_DIRECTORY' >&2
+    printf '%s\n' 'cargo xtask checkpoint prepare {ftl|queue|filesystem|log}' \
+        'cargo xtask checkpoint {previous|check|faults} LAB_DIRECTORY' >&2
     exit 2
 }
 

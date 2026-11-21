@@ -1,12 +1,11 @@
 # Recover the learner filesystem through FUSE
 
-From the checkout, run the lab on the guest with Rust, Python 3,
-`/dev/fuse`, and `/dev/shm` on tmpfs. The commands use OrbStack's
-`ubuntu` guest and a private mount namespace.
+Run from the checkout in the [root guest shell](../../course/START.md#mounted-labs)
+with Rust, Python 3, `/dev/fuse`, and `/dev/shm` on tmpfs.
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/fuse/smoke.sh image
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/fuse/smoke.sh ublk
+cargo xtask fuse image
+cargo xtask fuse ublk
 ```
 
 On `image`, the script creates an 8 MiB file on tmpfs and saves copies
@@ -56,18 +55,10 @@ committed frame returns a corruption error.
 ## Run the crash checks
 
 From the same checkout, run the focused model checks without a mount.
-The script compiles offline and keeps the target in guest tmpfs.
+The command compiles offline and keeps the target in guest tmpfs.
 
 ```sh
-orb -m ubuntu bash -eu -c '
-  test "$(findmnt -n -o FSTYPE -T /dev/shm)" = tmpfs
-  scratch=$(mktemp -d /dev/shm/io-journey-journal.XXXXXX)
-  trap "rm -rf -- \"$scratch\"" EXIT
-  mkdir "$scratch/tmp"
-  export CARGO_HOME="$scratch/cargo" CARGO_TARGET_DIR="$scratch/target"
-  export TMPDIR="$scratch/tmp" CARGO_INCREMENTAL=0
-  cargo test --locked --offline journal_fs
-'
+cargo xtask test journal_fs
 ```
 
 The tests reopen the RAM-backed FTL before the transaction and after
