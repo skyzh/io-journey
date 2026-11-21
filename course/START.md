@@ -19,14 +19,13 @@ cargo --version
 findmnt -n -o FSTYPE,OPTIONS -T /dev/shm
 ```
 
-The filesystem command should report `tmpfs` without `noexec`. Set these
-paths once in each guest shell so Cargo also builds the command runner in
-RAM.
+Once the filesystem command reports `tmpfs` without `noexec`, prepare a
+private Cargo directory for this guest shell. This also keeps the command
+runner's build in RAM.
 
 ```sh
-export CARGO_HOME="/dev/shm/io-journey-cargo-$USER"
-export CARGO_TARGET_DIR="/dev/shm/io-journey-target-$USER"
-export TMPDIR=/dev/shm
+io_journey_cargo=$(mktemp -d /dev/shm/io-journey-cargo.XXXXXX) &&
+  export CARGO_HOME="$io_journey_cargo/home" CARGO_TARGET_DIR="$io_journey_cargo/target" TMPDIR="$io_journey_cargo"
 ```
 
 Run the demo and offline checks as an ordinary user. The demo and first
