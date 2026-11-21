@@ -186,8 +186,9 @@ pub fn run(times: ServiceTimes) -> io::Result<()> {
         times.read, times.program, times.erase
     );
     println!(
-        "{TICKS} ticks spaced {ARRIVAL_INTERVAL_US} us apart: optional write to LBA {HOT_LBA}, then          two 4 KiB reads to LBAs 0 and 4 at +{READ_OFFSET_US} us"
+        "{TICKS} ticks at {ARRIVAL_INTERVAL_US} us intervals, with optional writes to LBA {HOT_LBA}"
     );
+    println!("Each tick offers two 4 KiB reads to LBAs 0 and 4 at +{READ_OFFSET_US} us");
     println!("Throughput window: first offered read to last completed read, including drain");
     println!(
         "{:<21} {:>5} {:>8} {:>10} {:>10} {:>11} {:>8} {:>8} {:>8} {:>8}",
