@@ -5,11 +5,10 @@ The application writes the same length- and CRC-framed records through an
 ext4 mount. Follow its sync to the device's flush and recover the records
 from that checkpoint.
 
-From the repository checkout on a Mac with the OrbStack machine `ubuntu`,
-run the lab in a private mount namespace.
+Run from the checkout in the [root guest shell](../../course/START.md#mounted-labs).
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/ublk/smoke.sh
+cargo xtask ext4
 ```
 
 The command was tested on Ubuntu 26.04.1 arm64, kernel

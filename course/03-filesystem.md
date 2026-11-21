@@ -1,7 +1,7 @@
 # 3. Blocks to files
 
 Keep your FTL and queue from [Blocks in flight](02-queue.md). Run
-`./course/learner.sh flush` and `./course/learner.sh dispatch` first.
+`cargo xtask learner flush` and `cargo xtask learner dispatch` first.
 In the [reference demo](../README.md#run-the-demo), follow the append's
 data writes and directory update. The [fixed-extent filesystem](../src/filesystem.rs)
 records a length after queuing its data. Reopening uses that length
@@ -15,7 +15,7 @@ publishes changes to names, such as a rename over another file.
 ## Make the redo commit recoverable
 
 Open [`course/learner/journal.rs`](learner/journal.rs) and run
-`./course/learner.sh commit`. The error points to the first transaction.
+`cargo xtask learner commit`. The error points to the first transaction.
 Implement `persist_redo` using the supplied `Disk` interface.
 
 1. Flush the file data already written to the disk.
@@ -30,7 +30,7 @@ file sync and directory sync.
 
 ## Choose what to reopen
 
-Run `./course/learner.sh replay`. A cut after the marker is durable
+Run `cargo xtask learner replay`. A cut after the marker is durable
 reaches the missing committed-redo branch of `read_committed`.
 The starter handles an empty marker by reading the home block.
 For a valid marker, read `REDO`, compare its `frame_checksum` with
@@ -57,14 +57,12 @@ shorter file.
 
 ## Mount this filesystem
 
-Use the [FUSE prerequisites](../linux/fuse/README.md) and the same
-private guest mount namespace as the earlier labs. Run from the
-Mac checkout shell. Inside Linux, run the part beginning with
-`unshare` as guest root.
+Use the [FUSE prerequisites](../linux/fuse/README.md). From the checkout
+in the [root guest shell](START.md#mounted-labs), run both backends.
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/fuse/smoke.sh image learner
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/fuse/smoke.sh ublk learner
+cargo xtask fuse image learner
+cargo xtask fuse ublk learner
 ```
 
 The first command uses the learner journal on a tmpfs image. The

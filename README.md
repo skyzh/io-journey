@@ -9,32 +9,15 @@ flushes two records and checks their recovery after two simulated power cuts.
 
 ## Run the demo
 
-The demo needs Bash, Rust and Cargo, and `findmnt` from util-linux in Linux.
-From the checkout on a Mac with an OrbStack machine named `ubuntu`, run the
-following. Cargo's cache, build output, and temporary files go in `/dev/shm`.
-The demo has no third-party dependencies.
+From the Linux checkout, complete the [tmpfs setup](course/START.md#set-up-linux),
+then run the demo. It has no third-party dependencies.
 
 ```sh
-orb -m ubuntu bash -eu -c '
-  if [[ $(findmnt -n -o FSTYPE -T /dev/shm) != tmpfs ]]; then
-    printf "%s\n" "/dev/shm must be tmpfs." >&2
-    exit 1
-  fi
-  scratch=$(mktemp -d /dev/shm/io-journey.XXXXXX)
-  trap "rm -rf -- \"$scratch\"" EXIT
-  mkdir "$scratch/tmp"
-  export CARGO_HOME="$scratch/cargo"
-  export CARGO_TARGET_DIR="$scratch/target"
-  export TMPDIR="$scratch/tmp"
-  export CARGO_INCREMENTAL=0
-  cargo run --locked --offline --quiet
-'
+cargo xtask demo
 ```
 
-On standalone Linux, run the same command from the checkout beginning with
-`bash -eu -c`. For focused tests, use `cargo test --locked --offline` as the
-last line of the body. The demo and tests were verified on OrbStack Ubuntu
-26.04.1 arm64 with Rust 1.93.1.
+Run `cargo xtask test` for the offline tests. The demo and tests were
+verified on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
 
 Look for these lines in the trace.
 

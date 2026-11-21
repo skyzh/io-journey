@@ -5,8 +5,8 @@ repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 baseline=e2c2d782ae036d6f67359b0cff8cabc2a6eba7dc
 
 usage() {
-    printf '%s\n' 'course/checkpoint.sh prepare {ftl|queue|filesystem|log}' \
-        'course/checkpoint.sh {previous|check|faults} LAB_DIRECTORY' >&2
+    printf '%s\n' 'cargo xtask checkpoint prepare {ftl|queue|filesystem|log}' \
+        'cargo xtask checkpoint {previous|check|faults} LAB_DIRECTORY' >&2
     exit 2
 }
 
@@ -36,6 +36,11 @@ run_test() {
     cargo test --locked --offline "$1" -- --exact
 }
 
+retry_check() {
+    printf 'After editing, retry from the course checkout with cargo xtask checkpoint check %q\n' "$lab_dir" >&2
+    exit "$1"
+}
+
 [[ $# -eq 2 ]] || usage
 if [[ "$(findmnt -n -o FSTYPE -T /dev/shm)" != tmpfs ]]; then
     printf '%s\n' 'Run the checkpoint commands on Linux with /dev/shm mounted as tmpfs.' >&2
@@ -45,6 +50,11 @@ fi
 if [[ "$1" == prepare ]]; then
     chapter=$2
     choose_tests "$chapter"
+    if ! git -C "$repo_dir" cat-file -e "$baseline^{tree}" 2>/dev/null; then
+        printf '%s\n' "Checkpoint baseline $baseline is missing." \
+            'Use a full-history clone. In a shallow clone, run git fetch --unshallow and then retry.' >&2
+        exit 1
+    fi
     lab_dir=$(mktemp -d /dev/shm/io-journey-lab.XXXXXX)
     trap "rm -rf -- \"$lab_dir\"" EXIT
     git -C "$repo_dir" archive "$baseline" Cargo.toml Cargo.lock src | tar -x -C "$lab_dir"
@@ -74,9 +84,9 @@ cd -- "$lab_dir"
 case "$1" in
     previous) run_test "$predecessor" ;;
     check)
-        run_test "$exercise"
+        run_test "$exercise" || retry_check "$?"
         if [[ "$chapter" == log ]]; then
-            run_test tests::demo_recovers_the_acknowledged_prefix_across_both_cuts
+            run_test tests::demo_recovers_the_acknowledged_prefix_across_both_cuts || retry_check "$?"
         fi
         ;;
     faults)

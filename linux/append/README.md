@@ -1,11 +1,11 @@
 # Compare durable append engines
 
-Run from the checkout in the OrbStack Ubuntu guest. The script uses the
-[ublk](../ublk/README.md) and [FUSE](../fuse/README.md) setup, Python 3,
-and a private mount namespace.
+Run from the checkout in the [root guest shell](../../course/START.md#mounted-labs).
+The lab uses the [ublk](../ublk/README.md) and [FUSE](../fuse/README.md)
+setup and Python 3.
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/append/benchmark.sh
+cargo xtask append
 ```
 
 The script prints its capture directory on guest tmpfs. It first runs on

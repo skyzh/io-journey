@@ -15,8 +15,8 @@ page allocation, victim selection, flush, and fault injection are supplied.
 Run the predecessor check and then the mapping check.
 
 ```sh
-./course/learner.sh previous
-./course/learner.sh map
+cargo xtask learner previous
+cargo xtask learner map
 ```
 
 The first command checks page programming and whole-block erasure. The
@@ -28,13 +28,13 @@ and the method returns its earlier location, if any. The caller has
 already checked the LBA and programmed the new page successfully.
 Use `self.map.replace(lba, page)` to record the change.
 
-Run `./course/learner.sh map` again. An overwrite should change the mapping
+Run `cargo xtask learner map` again. An overwrite should change the mapping
 and expose the new bytes while the old physical page stays programmed.
 This is the live map. A flush saves the pages and map together for reopen.
 
 ## Relocate live pages before erasing
 
-Run `./course/learner.sh collect`. The fixture overwrites distinct blocks
+Run `cargo xtask learner collect`. The fixture overwrites distinct blocks
 until collection must move a live page. The starter reports that live-page
 relocation needs an implementation.
 
@@ -52,8 +52,8 @@ Keep the `_trace` parameter in the function signature. You can leave it
 unused or use it to record relocations for debugging.
 
 ```sh
-./course/learner.sh collect
-./course/learner.sh check
+cargo xtask learner collect
+cargo xtask learner check
 ```
 
 The first check verifies that a live page moved and that all eight blocks
@@ -67,19 +67,11 @@ pointing to the previous complete page.
 After the offline checks pass, run the ext4 lab from this checkout. It uses
 a disposable guest ublk device. Check the [ublk prerequisites](../linux/ublk/README.md)
 for the kernel device, ext4 tools, libclang, and temporary Cargo dependencies.
-The build and mount run as guest root, so Rust and Cargo must be available
-to root. The mount uses a private namespace. Both `/dev/shm` and `/run` must
-be on tmpfs. From the Mac checkout shell, run the full OrbStack command.
+Use the [root guest shell](START.md#mounted-labs) from the checkout.
+Both `/dev/shm` and `/run` must be on tmpfs.
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/ublk/smoke.sh learner
-```
-
-Inside the guest or on standalone lab Linux, run this command from the
-checkout.
-
-```sh
-sudo unshare --mount --propagation private bash linux/ublk/smoke.sh learner
+cargo xtask ext4 learner
 ```
 
 The `learner` argument builds the adapter with `course/learner/ftl.rs`.
