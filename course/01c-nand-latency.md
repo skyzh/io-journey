@@ -1,8 +1,9 @@
 # Read latency under NAND contention
 
-Run the reference FTL with a virtual clock and compare the same reads under
-three workloads. From the checkout in the Linux guest, with executable tmpfs
-at `/dev/shm` as in [Start here](START.md), run:
+Use a clean checkout at the repository root in the Linux guest. You can
+run `cargo xtask nand-latency` before starting any chapter work. It uses
+the reference FTL. With executable tmpfs at `/dev/shm` as in
+[Start here](START.md), direct Cargo's build files there for this run.
 
 ```sh
 env CARGO_HOME=/dev/shm/io-journey-cargo CARGO_TARGET_DIR=/dev/shm/io-journey-target TMPDIR=/dev/shm cargo xtask nand-latency
@@ -25,11 +26,15 @@ all measured writes and collection operations use die 0 in both mixed
 rows. The FTL collects when only four erased pages remain. The collector
 accounts for each relocated page with its actual source read and
 destination program, then erases the victim before the host program.
+`GC copy` counts relocated pages and `GC pgm` counts their destination
+programs.
 
 Compare the first two rows to see how a program makes a read wait on the
 same die. Compare the two mixed rows to see the additional delay from
 copies and erases. The trace shows the first collection alongside the
-corresponding read pair. Die 1 can service its read while die 0 is busy.
+corresponding read pair. It omits the host program, which runs from
+4,000 to 4,400 µs at the default service times. Die 1 can service its read
+while die 0 is busy.
 Each die serves operations in order, one at a time, with no preemption.
 Read throughput is completed read bytes divided by virtual time from the
 first offered read to the last read completion, including the drain.
