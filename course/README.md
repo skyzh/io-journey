@@ -22,9 +22,10 @@ page placements, then find the same records after each cut.
 ### Open a lab
 
 Run these commands after the [Linux setup](START.md#set-up-linux).
-Git and tar prepare the sources from the pinned userspace baseline
-in the repository history. The prepared sources, Cargo cache, and build
-output live on the guest's `/dev/shm` tmpfs.
+Use a full-history clone so Git and tar can prepare the sources from the
+pinned userspace baseline. If you cloned with `--depth`, run
+`git fetch --unshallow` first. The prepared sources, Cargo cache, and
+build output live on the guest's `/dev/shm` tmpfs.
 
 ```sh
 cargo xtask checkpoint prepare ftl

@@ -7,8 +7,8 @@ and run that code on an ext4 mount.
 
 ## Set up Linux
 
-Use a Linux checkout with a Rust toolchain and Cargo. The lab helpers need
-Bash and util-linux. On a Mac with an OrbStack machine named `ubuntu`, open
+Use a Linux checkout with a Rust toolchain, Cargo, Bash, `mktemp`, and
+`findmnt` from util-linux. On a Mac with an OrbStack machine named `ubuntu`, open
 a guest shell from the course checkout with `orb -m ubuntu`.
 
 From the checkout inside Linux, check the toolchain and RAM filesystem.
