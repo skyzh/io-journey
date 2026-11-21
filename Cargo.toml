@@ -3,6 +3,7 @@ name = "io-journey"
 version = "0.1.0"
 edition = "2021"
 publish = false
+default-run = "io-journey"
 
 [features]
 learner = []

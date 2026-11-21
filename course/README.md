@@ -5,6 +5,7 @@ carry your changes forward in one checkout.
 
 1. [NAND to SSD](01-ftl.md). Map writes, reclaim a block, and recover an ext4 log using your FTL.
    Optional extensions cover [free-space tracking](01a-ftl-index.md) and [shared checkpoint pages](01b-ftl-snapshots.md).
+   The [NAND timing lab](01c-nand-latency.md) shows read contention and garbage collection in virtual time.
 2. [Blocks in flight](02-queue.md). Add bounded requests, flush ordering, and Linux tag dispatch.
 3. [Blocks to files](03-filesystem.md). Publish file and directory changes and replay them through FUSE.
 4. [Efficient application I/O](04-append.md). Recover a receipt and compare durable append engines.
