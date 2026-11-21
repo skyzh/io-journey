@@ -1,6 +1,6 @@
 # Share immutable checkpoint pages
 
-Finish [NAND to SSD](01-ftl.md) and run `./course/learner.sh check`.
+Finish [NAND to SSD](01-ftl.md) and run `cargo xtask learner check`.
 The starting FTL copies the NAND pages and map on every flush and
 copies them again when you separately export a checkpoint. Even a
 clean flush copies every programmed page, including stale ones.
@@ -10,7 +10,7 @@ clean flush copies every programmed page, including stale ones.
 Open [`course/learner/pages.rs`](learner/pages.rs) and run the new check.
 
 ```sh
-./course/learner.sh sharing
+cargo xtask learner sharing
 ```
 
 The starter preserves the bytes but fails the check that clean exports
@@ -33,8 +33,8 @@ shared pages.
 ## Measure where the work goes
 
 ```sh
-./course/measure-snapshots.sh timing
-./course/measure-snapshots.sh heap
+cargo xtask ftl-snapshots timing
+cargo xtask ftl-snapshots heap
 ```
 
 The two complete implementations use identical geometry, request bytes,
@@ -44,7 +44,7 @@ barrier, replace one LBA. Hold the first and last exports across the
 same tear. Each run checks both saved images and every committed block.
 The benchmarks compare the supplied implementations with the free-space
 index disabled in both builds. Use
-`./course/learner.sh sharing` to check your edited implementation.
+`cargo xtask learner sharing` to check your edited implementation.
 
 The timing CSV has one row per barrier. It measures flush and export
 separately and includes a write-to-flush interval for the input at that

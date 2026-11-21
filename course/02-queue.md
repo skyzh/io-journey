@@ -1,7 +1,7 @@
 # 2. Blocks in flight
 
 Continue with the same FTL from [NAND to SSD](01-ftl.md). Run
-`./course/learner.sh check` before changing the queue. Its predecessor
+`cargo xtask learner check` before changing the queue. Its predecessor
 still has to move live pages and recover committed values.
 
 Your inner Rust queue accepts whole requests. A range uses one slot even
@@ -10,7 +10,7 @@ returns that ID with the result after the device operation runs.
 
 ## Admit requests without executing them
 
-Run `./course/learner.sh admit`. The starter accepts one request too
+Run `cargo xtask learner admit`. The starter accepts one request too
 many. In [`course/learner/queue.rs`](learner/queue.rs), implement
 `has_room` using the pending length and the configured depth. Admission
 already validates the whole range. A full queue returns the caller's
@@ -21,7 +21,7 @@ The supplied fields are `pending` of type `VecDeque<Request>` and
 
 ## Preserve order and IDs
 
-Run `./course/learner.sh order`. Give each accepted request a distinct
+Run `cargo xtask learner order`. Give each accepted request a distinct
 ID in `allocate_id`. Return a rejected submission error if incrementing
 `next_id` would overflow. In `take_next_request`, take the oldest
 accepted request from the supplied `VecDeque`. Run the check again.
@@ -31,7 +31,7 @@ third completion must find the queue empty. `RequestId` is `u64`, and
 
 ## Flush at the request boundary
 
-Run `./course/learner.sh flush`. The fixture writes a range, submits
+Run `cargo xtask learner flush`. The fixture writes a range, submits
 a flush, then submits another write as space opens. In `flush_image`,
 publish the FTL image when the queue executes that flush. At this point
 the earlier range has finished. The supplied `Ftl::flush` takes
@@ -46,7 +46,7 @@ Rust queue. It sees a ready batch from Linux. Keep the inner queue FIFO
 and implement the read-first choice in
 [`course/learner/dispatch.rs`](learner/dispatch.rs).
 
-Run `./course/learner.sh dispatch`. FIFO always chooses index zero.
+Run `cargo xtask learner dispatch`. FIFO always chooses index zero.
 For read-first, find the first read before a barrier that has no
 overlapping earlier write. `request` supplies the kind and sector span
 for each batch entry. `disjoint` checks both span ends and treats overflow
@@ -55,12 +55,11 @@ It tests disjoint and overlapping reads, a flush boundary, and overflow.
 
 ## Compare on the guest
 
-Use the [fio and tracing prerequisites](../linux/ublk/QUEUE_BENCHMARK.md)
-and run from the Mac checkout shell. The Linux command starts at
-`unshare` and runs as guest root.
+Use the [fio and tracing prerequisites](../linux/ublk/QUEUE_BENCHMARK.md).
+Run from the checkout in the [root guest shell](START.md#mounted-labs).
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/ublk/queue-bench.sh learner
+cargo xtask queue learner
 ```
 
 The adapter builds your FTL, inner queue, and dispatch from this

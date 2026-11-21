@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use ./course/learner.sh {previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use cargo xtask learner {previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
@@ -73,4 +73,8 @@ trap 'rm -rf -- "$scratch"' EXIT
 mkdir "$scratch/tmp"
 export CARGO_HOME="$scratch/cargo" CARGO_TARGET_DIR="$scratch/target"
 export TMPDIR="$scratch/tmp" CARGO_INCREMENTAL=0
-cargo test --locked --manifest-path "$repo_dir/$manifest" --features "$features" "${cargo_args[@]}" "${test_args[@]}"
+cargo test --locked --manifest-path "$repo_dir/$manifest" --features "$features" "${cargo_args[@]}" "${test_args[@]}" || {
+    status=$?
+    printf 'After editing, retry from the course checkout with cargo xtask learner %q\n' "$1" >&2
+    exit "$status"
+}

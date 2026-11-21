@@ -1,7 +1,7 @@
 # 4. Efficient application I/O
 
 Keep your working FTL, queue, and journal. Start with
-`./course/learner.sh replay`. This chapter builds an append engine
+`cargo xtask learner replay`. This chapter builds an append engine
 that issues bounded positional writes and acknowledges a group only
 after successful file sync.
 
@@ -11,7 +11,7 @@ Each record has a length, a checksum, and its payload. A receipt gives
 the byte count the app already acknowledged. During the lab, the
 runner holds that receipt outside the file it cuts.
 
-Run `./course/learner.sh receipt` and open
+Run `cargo xtask learner receipt` and open
 [`course/learner/record.rs`](learner/record.rs). Limit the supplied
 `decode` function to the exact length in the receipt. Return an
 `InvalidData` error if the receipt extends beyond the bytes available.
@@ -26,7 +26,7 @@ submission plumbing. Each wave has up to four writes at explicit file
 offsets. The adapter keeps an `Arc` owner for each submitted buffer as
 long as the kernel may still be using it.
 
-Run `./course/learner.sh completions`. This step fetches the locked
+Run `cargo xtask learner completions`. This step fetches the locked
 Linux `io-uring` dependency into tmpfs. Open
 [`course/learner/append-completions.rs`](learner/append-completions.rs).
 In `check_completions`, match each returned ID to its request exactly
@@ -47,7 +47,7 @@ Run the check again to exercise both kinds of failure.
 
 ## Acknowledge after sync
 
-Run `./course/learner.sh ack`. Open
+Run `cargo xtask learner ack`. Open
 [`course/learner/append-commit.rs`](learner/append-commit.rs) and write
 the group in chunks of `DEPTH`. Once all waves in the group succeed,
 sync the file once. Add one receipt per record only after that sync
@@ -60,12 +60,11 @@ new receipts.
 
 ## Compare and recover
 
-Follow the [guest prerequisites](../linux/append/README.md) and run
-from the Mac checkout shell. In Linux, run the part beginning with
-`unshare` as guest root.
+Follow the [guest prerequisites](../linux/append/README.md). Run from the
+checkout in the [root guest shell](START.md#mounted-labs).
 
 ```sh
-orb -m ubuntu -u root unshare --mount --propagation private bash linux/append/benchmark.sh learner
+cargo xtask append learner
 ```
 
 One release build selects the learner append code for the synchronous
