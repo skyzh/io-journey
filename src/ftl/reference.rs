@@ -21,8 +21,7 @@ impl FlashImage {
                     .erased_pages()
                     .find(|page| !victim_pages.contains(page))
                     .expect("space reserved outside victim");
-                let data = self.nand.read(source).expect("mapped page").clone();
-                self.nand.program(destination, data)?;
+                self.nand.copy_page(source, destination)?;
                 self.map.replace(lba, destination);
                 trace.push(format!(
                     "ftl    gc copy LBA {lba} from page {source} to page {destination}"

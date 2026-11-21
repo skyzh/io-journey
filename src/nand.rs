@@ -16,6 +16,14 @@ pub const ERASED_BYTE: u8 = 0xff;
 
 pub type Block = Box<[u8; BLOCK_BYTES]>;
 
+#[cfg(not(feature = "learner"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PhysicalOp {
+    Read(usize),
+    Program(usize),
+    Erase(usize),
+}
+
 #[derive(Clone, Copy)]
 pub struct NandGeometry {
     erase_blocks: usize,
@@ -58,6 +66,8 @@ impl NandGeometry {
 pub(crate) struct Nand {
     geometry: NandGeometry,
     pages: Vec<Option<StoredPage>>,
+    #[cfg(not(feature = "learner"))]
+    operations: Option<Vec<PhysicalOp>>,
     #[cfg(feature = "indexed-ftl")]
     free: FreePages,
 }
@@ -72,6 +82,8 @@ impl Nand {
         Ok(Self {
             geometry,
             pages,
+            #[cfg(not(feature = "learner"))]
+            operations: None,
             #[cfg(feature = "indexed-ftl")]
             free: FreePages::new(geometry)?,
         })
@@ -83,6 +95,31 @@ impl Nand {
 
     pub(crate) fn read(&self, page: usize) -> Option<&Block> {
         self.pages.get(page)?.as_ref().map(storage::borrow)
+    }
+
+    #[cfg(not(feature = "learner"))]
+    pub(crate) fn start_capture(&mut self) {
+        debug_assert!(self.operations.is_none());
+        self.operations = Some(Vec::new());
+    }
+
+    #[cfg(not(feature = "learner"))]
+    pub(crate) fn finish_capture(&mut self) -> Vec<PhysicalOp> {
+        self.operations.take().expect("active NAND capture")
+    }
+
+    #[cfg(not(feature = "learner"))]
+    pub(crate) fn copy_page(&mut self, source: usize, destination: usize) -> io::Result<()> {
+        let data = self.read(source).expect("mapped page").clone();
+        self.record(PhysicalOp::Read(source));
+        self.program(destination, data)
+    }
+
+    #[cfg(not(feature = "learner"))]
+    fn record(&mut self, operation: PhysicalOp) {
+        if let Some(operations) = &mut self.operations {
+            operations.push(operation);
+        }
     }
 
     #[cfg(not(feature = "indexed-ftl"))]
@@ -134,6 +171,8 @@ impl Nand {
         #[cfg(feature = "indexed-ftl")]
         self.free
             .record_program(page, page / self.geometry.pages_per_erase_block());
+        #[cfg(not(feature = "learner"))]
+        self.record(PhysicalOp::Program(page));
         Ok(())
     }
 
@@ -142,6 +181,8 @@ impl Nand {
         self.pages[pages.clone()].fill(None);
         #[cfg(feature = "indexed-ftl")]
         self.free.record_erase(erase_block, pages);
+        #[cfg(not(feature = "learner"))]
+        self.record(PhysicalOp::Erase(erase_block));
     }
 }
 
