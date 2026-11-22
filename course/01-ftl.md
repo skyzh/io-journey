@@ -168,7 +168,4 @@ The offline collection fixture forces live-page relocation separately.
 ## Next
 
 [Blocks in flight](02-queue.md) puts a bounded request queue on top of
-your FTL. Three optional labs build on this chapter:
-[free-space tracking](01a-ftl-index.md),
-[shared checkpoint pages](01b-ftl-snapshots.md), and the
-[NAND timing lab](01c-nand-latency.md).
+your FTL.
