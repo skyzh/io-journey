@@ -115,8 +115,11 @@ parameter is optional to use.
 
 1. Choose an erased destination outside the victim, using
    `self.nand.erased_pages()`.
-2. Read the source with `self.nand.read(source)` and clone it, because
-   `program` takes an owned `Block`.
+2. Read the source with `self.nand.read(source)`. It returns
+   `Option<&Block>`. For a valid page index, `None` means the page is erased.
+   A source from the live map is a valid, programmed page, so unwrap it
+   with `.expect("mapped page")`. Clone the block to give `program` an owned
+   `Block`.
 3. Program the destination with `self.nand.program(destination, data)`.
    Return its error with `?` if it fails.
 4. Only after the program succeeds, record the move with

@@ -70,19 +70,20 @@ straight from how NAND works.
 ## What NAND allows
 
 NAND flash has three operations, and the course's model in
-[`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs) enforces the same limits:
+[`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs)
+enforces simplified versions of these limits.
 
 - **Read** a page.
-- **Program** a page, but only if it is erased. Erased flash reads as all
-  one bits, `0xFF` bytes, and programming can only clear bits. A page
-  that holds data can't be rewritten in place. In the model,
-  `Nand::program` returns an error for a page that isn't erased.
+- **Program** an erased page. Erased flash reads as `0xFF` bytes, and
+  programming changes one bits to zero. Some NAND devices permit a limited
+  number of partial-page programs before the next erase. The model allows
+  one program per page between erases. For a valid page index, `Nand::read`
+  returns `None` for an erased page. [ONFI specification, §5.7.1.25](https://onfi.org/files/onfi_3_2-gold.pdf)
 - **Erase** a whole erase block at once. Here a block has 4 pages; real
   chips have far more. There is no way to erase a single page.
 
-So a disk that lets you overwrite any 4 KiB block at any time has to be
-built on top of a chip that can't overwrite anything. That is the FTL's
-job, and it does it in three parts:
+The FTL gives the host a stable address for each 4 KiB block while
+moving its data underneath. It does this in three parts.
 
 - **Out-of-place writes.** Every write, including an overwrite, programs
   a fresh erased page.
@@ -93,8 +94,10 @@ job, and it does it in three parts:
   be reclaimed by erasing their whole block. When erased pages run low,
   the FTL picks a block with stale pages and copies any live pages in it
   somewhere else. Then it updates their mappings and erases the block.
-  This FTL keeps at least one erase block's worth of pages (4) erased,
-  so those copies always have room.
+  In this geometry ordinary writes start collection at four or fewer
+  erased pages, one erase block's worth. A torn program can use one of
+  those pages before collection runs. If fewer than four erased pages
+  remain, reopening the device collects to restore the reserve.
 
 Chapter 1 has you write the mapping update and the copy step.
 
@@ -102,12 +105,13 @@ Chapter 1 has you write the mapping update and the copy step.
 
 A real SSD typically works from a copy of its mapping held in RAM. RAM is
 lost at power-off, so the drive must also write enough information to the flash
-itself to rebuild the mapping after a sudden power loss. One documented
-design is the [SPDK FTL](https://spdk.io/doc/ftl.html) (see "Dirty
-shutdown recovery"). Each band, a large region of flash, keeps a
-physical-to-logical map: which LBA each page holds, with a sequence number
-for its age. After a crash the FTL rebuilds the mapping from those maps,
-and the newest entry for each LBA wins.
+itself to rebuild the mapping after a sudden power loss. SPDK provides a
+software FTL over block devices. After a power failure it rebuilds the
+mapping from reverse maps for closed bands on the base device and chunks
+on the cache device. Sequence IDs identify the newest entry for each LBA.
+Open bands use a separate metadata region. Open chunks recover from cache
+metadata or a log.
+[SPDK recovery design](https://spdk.io/doc/ftl.html#ftl_dirty_shutdown)
 
 This course's model takes a shortcut. A flush saves a copy of the NAND
 pages and the mapping together, in RAM, as one step. A simulated power cut
