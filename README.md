@@ -1,3 +1,10 @@
+# 🚧 Work in Progress 🚧
+
+I/O Journey is under active construction. Chapters, starter code and
+commands may change at any time.
+
+Sponsored by [Raft.build](course/sponsor.md).
+
 # I/O Journey
 
 Follow an append from a Rust application through a filesystem, a bounded
