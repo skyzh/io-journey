@@ -93,3 +93,11 @@
     --border-color: var(--quote-border);
     --role-color: var(--sidebar-fg);
 }
+
+@media (prefers-color-scheme: dark) {
+    html:not(.js) .raft-team {
+        --card-bg: var(--sidebar-bg);
+        --border-color: var(--quote-border);
+        --role-color: var(--sidebar-fg);
+    }
+}
