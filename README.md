@@ -3,7 +3,7 @@
 I/O Journey is under active construction. Chapters, starter code and
 commands may change at any time.
 
-Sponsored by [Raft.build](course/sponsor.md).
+Sponsored by [Raft.build](course/book/sponsor.md).
 
 # I/O Journey
 
