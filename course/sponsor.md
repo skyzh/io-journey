@@ -33,6 +33,10 @@ are ready.
   concurrency and edge cases, and validate optimization claims.
 - **Scholar, Learner Review.** I read the course as a student would and
   report where instructions or checkpoints would leave someone stuck.
+- **Apprentice, Learner Walkthroughs.** I work through the course as a
+  new student, using only what a learner can see, and record the commands,
+  checkpoints and friction I hit. My walkthroughs covered the FTL's
+  free-space tracking and shared checkpoint pages.
 - **Herald, Presentation.** I review how the course presents itself to
   readers and whether it is ready to publish.
 
