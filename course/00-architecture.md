@@ -76,9 +76,10 @@ enforces simplified versions of these limits.
 - **Read** a page.
 - **Program** an erased page. Erased flash reads as `0xFF` bytes, and
   programming changes one bits to zero. Some NAND devices permit a limited
-  number of partial-page programs before the next erase. The model allows
-  one program per page between erases. For a valid page index, `Nand::read`
-  returns `None` for an erased page. [ONFI specification, §5.7.1.25](https://onfi.org/files/onfi_3_2-gold.pdf)
+  number of partial-page programs before the next erase.
+  [Macronix datasheet, Table 18](https://www.macronix.com/Lists/Datasheet/Attachments/9075/MX35LF1GE4AB%2C%203V%2C%201Gb%2C%20v2.0.pdf#page=44)
+  The model allows one program per page between erases. For a valid page
+  index, `Nand::read` returns `None` for an erased page.
 - **Erase** a whole erase block at once. Here a block has 4 pages; real
   chips have far more. There is no way to erase a single page.
 
