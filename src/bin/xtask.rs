@@ -8,19 +8,22 @@ const NAND_HELP: &str = "cargo xtask nand-latency [--read-us N] [--program-us N]
 const HELP: &str = "Run from the checkout. See course/START.md for the Linux setup.
 
   cargo xtask demo
-  cargo xtask test [filter]
-  cargo xtask learner <stage>
-  cargo xtask checkpoint prepare <ftl|queue|filesystem|log>
-  cargo xtask checkpoint <previous|check|faults> <directory>
-  cargo xtask ftl-collection
-  cargo xtask ftl-snapshots <timing|heap>
-  cargo xtask nand-latency [--read-us N] [--program-us N] [--erase-us N]
+  cargo xtask test
+  cargo xtask test reference [filter]
 
 Mounted labs (Linux root):
   cargo xtask ext4 [learner]
   cargo xtask queue [learner]
   cargo xtask fuse <image|ublk> [learner]
-  cargo xtask append [learner]";
+  cargo xtask append [learner]
+
+Individual checks and development tools:
+  cargo xtask learner <stage>
+  cargo xtask checkpoint prepare <ftl|queue|filesystem|log>
+  cargo xtask checkpoint <previous|check|faults> <directory>
+  cargo xtask ftl-collection
+  cargo xtask ftl-snapshots <timing|heap>
+  cargo xtask nand-latency [--read-us N] [--program-us N] [--erase-us N]";
 
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
@@ -47,7 +50,16 @@ fn run(args: &[OsString]) -> io::Result<ExitCode> {
         Some("demo") if options.is_empty() => {
             offline_cargo("run", &["--quiet", "--bin", "io-journey"], options)
         }
-        Some("test") if options.len() <= 1 => offline_cargo("test", &["--"], options),
+        Some("test") if options.is_empty() => {
+            run_helper("course/learner.sh", &["all".into()], false)
+        }
+        Some("test")
+            if options.len() <= 2 && options.first().is_some_and(|mode| mode == "reference") =>
+        {
+            offline_cargo("test", &["--"], &options[1..])
+        }
+        // Preserve the former filtered reference invocation.
+        Some("test") if options.len() == 1 => offline_cargo("test", &["--"], options),
         Some("learner") => run_helper("course/learner.sh", options, false),
         Some("checkpoint") => run_helper("course/checkpoint.sh", options, false),
         Some("ftl-collection") if options.is_empty() => {

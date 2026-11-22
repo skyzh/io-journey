@@ -58,7 +58,7 @@ From the same checkout, run the focused model checks without a mount.
 The command compiles offline and keeps the target in guest tmpfs.
 
 ```sh
-cargo xtask test journal_fs
+cargo xtask test reference journal_fs
 ```
 
 The tests reopen the RAM-backed FTL before the transaction and after

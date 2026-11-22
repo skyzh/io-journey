@@ -28,9 +28,10 @@ io_journey_cargo=$(mktemp -d /dev/shm/io-journey-cargo.XXXXXX) &&
   export CARGO_HOME="$io_journey_cargo/home" CARGO_TARGET_DIR="$io_journey_cargo/target" TMPDIR="$io_journey_cargo"
 ```
 
-Run the demo and offline checks as an ordinary user. The demo and first
-chapter checks have no third-party Rust dependencies. The course was
-checked on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
+Run the demo and `cargo xtask test` as an ordinary user. The append
+chapter needs Cargo registry access to fetch its locked Linux `io-uring`
+dependencies into tmpfs. The earlier chapters use the standard library.
+The course was checked on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
 
 ### Mounted labs
 
@@ -39,16 +40,33 @@ Run these from the checkout in a root Linux shell. On a Mac, open it with
 in that shell. Each mounted Cargo command uses a private mount namespace.
 The lab pages list their kernel and tool prerequisites.
 
-## Run the reference and begin your implementation
+## Run the reference demo
 
 ```sh
 cargo xtask demo
 ```
 
 Find the two acknowledged records, the visible unflushed record, and
-the two records that survive the cuts. Use `cargo xtask --help` to see
-the available commands.
+the two records that survive the cuts.
 
-Keep editing in this checkout as you work through the [chapters](README.md).
-Start with [NAND to SSD](01-ftl.md), where the first check exercises supplied
-NAND programming and erasure before you add the FTL operations.
+## Test your own implementation
+
+From the course checkout, use the same command after each edit.
+
+```sh
+cargo xtask test
+```
+
+The command checks the supplied NAND first, then tests the exercises in
+chapter order. It stops at the first failing check and names the step
+to work on next. When that step passes, the command can reach the next
+exercise, which may still fail until you implement it.
+
+The command sets Cargo features to compile your files under
+`course/learner/`. Later features keep your earlier modules active, so
+the queue builds on your FTL and the journal and append chapters keep
+using your earlier work. Keep editing in this one checkout through the
+four chapters. The demo and `cargo xtask test reference` use the supplied
+implementation.
+
+Next, [follow one write through the stack](00-architecture.md).
