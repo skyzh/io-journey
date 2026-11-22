@@ -12,7 +12,8 @@ block queue, and a flash translation layer (FTL) to simulated NAND. The demo
 flushes two records and checks their recovery after two simulated power cuts.
 
 [Start here](course/START.md) for the course setup, then follow the
-[chapter index](course/README.md).
+[chapters](course/README.md). To build the book locally with mdBook 0.5.4,
+run `mdbook build` from the checkout and open `book/index.html`.
 
 ## Run the demo
 
@@ -23,8 +24,10 @@ then run the demo. It has no third-party dependencies.
 cargo xtask demo
 ```
 
-Run `cargo xtask test` for the offline tests. The demo and tests were
-verified on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
+Run `cargo xtask test` as you work through the chapters. It tests your
+learner code in order and stops at the first failing check. Run
+`cargo xtask test reference` for the supplied implementation's tests.
+The demo and tests were verified on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
 
 Look for these lines in the trace.
 
@@ -39,11 +42,8 @@ app    read after torn program: ["first", "second"]
 demo   verified the acknowledged prefix after both cuts
 ```
 
-Continue with the [FTL chapter](course/01-ftl.md) and run your implementation
-under ext4. The [independent checkpoints](course/README.md#independent-checkpoints)
-and the [reference ext4 lab](linux/ublk/README.md) are also available.
-The optional [NAND timing lab](course/01c-nand-latency.md) uses virtual time
-to show why programs and garbage collection can delay otherwise identical reads.
+Continue with the [overview](course/00-architecture.md), then build
+your FTL and run it under ext4 in [NAND to SSD](course/01-ftl.md).
 
 ## Follow a record
 

@@ -1,9 +1,10 @@
 # 3. Blocks to files
 
-Keep your FTL and queue from [Blocks in flight](02-queue.md). Run
-`cargo xtask learner flush` and `cargo xtask learner dispatch` first.
-In the [reference demo](../README.md#run-the-demo), follow the append's
-data writes and directory update. The [fixed-extent filesystem](../src/filesystem.rs)
+Keep your FTL and queue from [Blocks in flight](02-queue.md).
+`cargo xtask test` should pass the queue and dispatch checks before
+it reaches the journal. In the [reference demo](START.md#run-the-reference-demo),
+follow the append's data writes and directory update. The
+[fixed-extent filesystem](https://github.com/skyzh/io-journey/blob/main/src/filesystem.rs)
 records a length after queuing its data. Reopening uses that length
 to decide which bytes belong to the file.
 
@@ -14,8 +15,9 @@ publishes changes to names, such as a rename over another file.
 
 ## Make the redo commit recoverable
 
-Open [`course/learner/journal.rs`](learner/journal.rs) and run
-`cargo xtask learner commit`. The error points to the first transaction.
+Open [`course/learner/journal.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/journal.rs) and run
+`cargo xtask test`. At the first transaction the commit check reports
+`implement journal barriers`.
 Implement `persist_redo` using the supplied `Disk` interface.
 
 1. Flush the file data already written to the disk.
@@ -25,13 +27,14 @@ Implement `persist_redo` using the supplied `Disk` interface.
 The marker binds a generation and checksum to that redo frame. The
 supplied code then writes and flushes the home block, and clears and
 flushes the marker. A failed transaction barrier leaves the filesystem
-requiring reopen. Run the commit check again and follow the names that survive
+requiring reopen. Rerun the tests and follow the names that survive
 file sync and directory sync.
 
 ## Choose what to reopen
 
-Run `cargo xtask learner replay`. A cut after the marker is durable
-reaches the missing committed-redo branch of `read_committed`.
+Once the commit check passes, the journal suite cuts power after the
+marker is durable and reaches the missing committed-redo branch of
+`read_committed`.
 The starter handles an empty marker by reading the home block.
 For a valid marker, read `REDO`, compare its `frame_checksum` with
 the marker, and decode the metadata against `disk.block_count()`.
@@ -40,7 +43,7 @@ supplied `corrupt` helper. Return the validated metadata and
 `Some(redo)` so the supplied replay step can reinstall home and
 clear the marker.
 
-Run the replay check again. A cut before the marker recovers the
+Run `cargo xtask test` again. A cut before the marker recovers the
 old name and bytes. A cut at or after the marker recovers the new
 name and bytes, with exactly the corresponding allocated blocks.
 A cut during replay can leave the marker present. Replaying it
@@ -53,12 +56,14 @@ inside an allocated block, the shrink needs a new block to zero the
 suffix while preserving the earlier committed bytes. On a full device it fails before
 changing the file. An aligned shrink only drops a whole block
 reference. After sync it reclaims that block and recovers the
-shorter file.
+shorter file. When the journal suite passes, the command reaches the
+receipt check in [Efficient application I/O](04-append.md).
 
 ## Mount this filesystem
 
-Use the [FUSE prerequisites](../linux/fuse/README.md). From the checkout
-in the [root guest shell](START.md#mounted-labs), run both backends.
+Use the [FUSE prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/fuse/README.md).
+From the checkout in the [root guest shell](START.md#mounted-labs), run
+both backends.
 
 ```sh
 cargo xtask fuse image learner

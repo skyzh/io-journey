@@ -70,7 +70,7 @@ straight from how NAND works.
 ## What NAND allows
 
 NAND flash has three operations, and the course's model in
-[`src/nand.rs`](../src/nand.rs) enforces the same limits:
+[`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs) enforces the same limits:
 
 - **Read** a page.
 - **Program** a page, but only if it is erased. Erased flash reads as all

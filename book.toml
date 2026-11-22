@@ -1,0 +1,12 @@
+[book]
+title = "I/O Journey"
+description = "Build a storage stack in Rust, from NAND flash and its translation layer through block queues, filesystems, and durable application I/O."
+language = "en"
+src = "course/book"
+
+[build]
+create-missing = false
+extra-watch-dirs = ["course"]
+
+[output.html]
+site-url = "/io-journey/"

@@ -23,12 +23,12 @@ There are twice as many pages as LBAs, so an overwrite always has
 somewhere new to go, and collection always has room to work.
 
 Most of the FTL is supplied. You write two methods in
-[`course/learner/ftl.rs`](learner/ftl.rs):
+[`course/learner/ftl.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/ftl.rs):
 
 | Supplied | Yours |
 | --- | --- |
-| The NAND model in [`src/nand.rs`](../src/nand.rs): `read`, `program`, `erase`, and `erased_pages` | |
-| `Ftl::write` in [`src/ftl.rs`](../src/ftl.rs): check the LBA, pick the first erased page, and program it | `publish_mapping`: point the LBA at that page and return the page it used before |
+| The NAND model in [`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs): `read`, `program`, `erase`, and `erased_pages` | |
+| `Ftl::write` in [`src/ftl.rs`](https://github.com/skyzh/io-journey/blob/main/src/ftl.rs): check the LBA, pick the first erased page, and program it | `publish_mapping`: point the LBA at that page and return the page it used before |
 | Start collection when 4 or fewer erased pages remain, choose the erase block with the most stale pages, and erase it afterwards | `relocate_live_pages`: copy each live page out of that block and update its mapping |
 | Reads, flush, simulated power cuts, the torn-program fault, and reopen | |
 
@@ -40,15 +40,14 @@ The mapping is `self.map`, a table with one entry per LBA. Each entry is
 Work in the checkout from [Start here](START.md) and run:
 
 ```sh
-cargo xtask learner check
+cargo xtask test
 ```
 
-This runs the 8 FTL tests against your `course/learner/ftl.rs`. With the
-untouched starter, 1 passes and 7 fail. The first failure to read is
-`successful_programs_publish_the_new_mapping`, which stops with
-`map the first programmed page`: the write programmed a page, but the
-mapping still says the LBA has no data. The test's source is in
-`src/ftl.rs`. Make your edits in the learner file.
+The supplied NAND check passes. The first FTL check,
+`successful_programs_publish_the_new_mapping`, stops with
+`map the first programmed page`. The write programmed a page, but the
+mapping still says the LBA has no data. The test is in `src/ftl.rs`.
+Make your edits in `course/learner/ftl.rs`.
 
 ## Step 1: publish the new page
 
@@ -77,9 +76,9 @@ Rename the `_page` parameter to `page` and use
 `self.map.replace(lba, page)`. It updates the entry and returns the old
 one.
 
-Run `cargo xtask learner check` again. Now 3 tests pass, and each of the
-other 5 fails with `implement live-page relocation`. That message comes
-from the second method. The fixtures wrote enough to need collection.
+Run `cargo xtask test` again. The mapping check passes and the live-page
+check reaches `implement live-page relocation`. Its fixture wrote enough
+to need collection.
 
 ## Step 2: move live pages before an erase
 
@@ -129,8 +128,9 @@ and the erase reclaims them with the rest of the block. Victim selection
 has already checked that enough erased pages exist outside the victim.
 The caller erases the block only if your method returns `Ok`.
 
-Run `cargo xtask learner check`. All 8 tests should pass. Besides the two
-traces above, they check that:
+Run `cargo xtask test`. The FTL suite should report 8 passing tests.
+The next failing check is now in the queue chapter. Besides the two
+traces above, the FTL suite checks that:
 
 - every LBA reads back its expected bytes after the image is reopened;
 - a torn program, power lost partway through writing a page, leaves those
@@ -145,8 +145,8 @@ mapping and relocation keep them safe.
 
 ## Use your FTL from ext4
 
-After the offline checks pass, run the ext4 lab from this checkout. It uses
-a disposable guest ublk device. Check the [ublk prerequisites](../linux/ublk/README.md)
+After the FTL checks pass, run the ext4 lab from this checkout. It uses
+a disposable guest ublk device. Check the [ublk prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/ublk/README.md)
 for the kernel device, ext4 tools, libclang, and temporary Cargo dependencies.
 Use the [root guest shell](START.md#mounted-labs) from the checkout.
 Both `/dev/shm` and `/run` must be on tmpfs.
