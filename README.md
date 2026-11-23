@@ -5,6 +5,8 @@ commands may change at any time.
 
 Sponsored by [Raft.build](course/book/sponsor.md).
 
+[![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
+
 # I/O Journey
 
 Follow an append from a Rust application through a filesystem, a bounded
