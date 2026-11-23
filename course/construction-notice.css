@@ -1,0 +1,14 @@
+.construction-notice {
+    /* Clear mdBook's negative page margin and keep the notice above its menu spacer. */
+    position: relative;
+    inset-block-start: var(--menu-bar-height);
+    z-index: 102;
+    box-sizing: border-box;
+    max-width: var(--content-max-width);
+    margin: 12px auto;
+    padding: 0.65em 0.9em;
+    border-inline-start: 0.25em solid var(--warning-border);
+    background-color: var(--quote-bg);
+    color: var(--fg);
+    line-height: 1.45;
+}

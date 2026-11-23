@@ -9,5 +9,5 @@ create-missing = false
 extra-watch-dirs = ["course"]
 
 [output.html]
-additional-css = ["course/sponsor.css"]
+additional-css = ["course/sponsor.css", "course/construction-notice.css"]
 site-url = "/io-journey/"
