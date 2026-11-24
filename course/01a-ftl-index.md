@@ -96,5 +96,5 @@ indexed collection, at 667 / 708 ns and 292 / 333 ns respectively. The
 second also measured 42 / 83 ns without collection. A separate learner
 run found the small timings tied. Maintaining the index costs work at
 every update. Its reduced scans become useful at the larger geometry
-in this fixture. The small workload follows the FTL case at `4d04bed`.
+in this fixture. The small workload follows the FTL case at `34674e0`.
 [Fixture source](measure-collection.rs) · [Run script](measure-collection.sh)
