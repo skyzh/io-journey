@@ -17,7 +17,8 @@ LLMs and has yet to receive Chi's full review.
 
 ## What you’ll build
 
-The Linux append lab runs each I/O engine on both filesystems.
+The Linux append lab runs both I/O engines on both filesystems through ublk.
+The diagram also shows where physical storage and the planned NVMe lab fit.
 
 ```mermaid
 flowchart TD
@@ -28,9 +29,14 @@ flowchart TD
     Sync --> Fuse["Course filesystem via FUSE"]
     Uring --> Ext4
     Uring --> Fuse
-    Ext4 --> Ublk["Linux ublk virtual block device"]
-    Fuse --> Ublk
-    Ublk --> Queue["Rust block request and completion queue"]
+    Ext4 --> Block["Linux block layer"]
+    Fuse --> Block
+    Block --> Ublk["ublk virtual block device · current lab"]
+    Block --> Hardware["Physical block device"]
+    Block -.-> NvmeHost["Linux NVMe driver · TBD"]
+    NvmeHost -. NVMe commands .-> NvmeController["Emulated NVMe controller · TBD"]
+    NvmeController -.-> Queue["Rust block request and completion queue"]
+    Ublk --> Queue
     Queue --> FTL["Flash translation layer (FTL)"]
     FTL --> NAND["Simulated NAND"]
 ```
