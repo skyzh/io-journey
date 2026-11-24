@@ -146,6 +146,34 @@ traces above, the FTL suite checks that:
 The supplied code handles the torn programs. The tests check that your
 mapping and relocation keep them safe.
 
+### What survives a torn program?
+
+Write a block filled with `0x12` to LBA 1 on an empty device. The FTL
+programs page 0 and maps LBA 1 to it. A successful flush copies the NAND
+image and the logical-to-physical map together into a durable checkpoint.
+The simulator holds that checkpoint in RAM to model what survives a cut.
+
+Now overwrite LBA 1 with a block filled with `0x34` and cut power after
+the first 19 bytes are programmed. The simulator records those bytes in
+a page that was erased in both the live image and the checkpoint. The
+rest of the page still contains erased bytes. The failed program leaves
+the checkpoint's mapping at LBA 1 → page 0.
+
+Reopen from the checkpoint after the cut. The simulator restores its NAND
+image, including the partial page, and loads the saved map directly.
+A read of LBA 1 still returns the full `0x12` block from page 0.
+
+Run the existing check against the supplied implementation from your Linux
+checkout:
+
+```sh
+cargo xtask test reference a_torn_program_persists_the_exact_prefix_without_publishing_a_mapping
+```
+
+The check inspects the exact bytes in the partial page and reads LBA 1
+after reopening. After you finish both exercises, `cargo xtask test`
+runs the same check with your FTL.
+
 ## Use your FTL from ext4
 
 After the FTL checks pass, run the ext4 lab from this checkout. It uses
