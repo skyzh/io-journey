@@ -3,7 +3,7 @@
 These commands prepare the original stand-alone exercises in separate
 snapshots. The course chapters use the files in your course checkout.
 
-Run the [append-and-recover demo](../README.md#run-the-demo) first. Follow the
+Run the [append-and-recover demo](START.md#run-the-reference-demo) first. Follow the
 application's two acknowledged records through the queue submissions and NAND
 page placements, then find the same records after each cut.
 
