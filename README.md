@@ -36,4 +36,4 @@ flowchart TD
 - [Efficient application I/O](course/04-append.md) — Build an append log and
   compare two ways of writing to Linux filesystems.
 
-Sponsored by [Raft.build](course/book/sponsor.md).
+Sponsored by [Raft.build](https://skyzh.github.io/io-journey/sponsor.html).
