@@ -1,3 +1,5 @@
+![I/O Journey: Build a Storage Stack in Rust. A record travels down through the application, filesystem, block queue, FTL and NAND flash.](./course/book/io-journey-banner.svg)
+
 # I/O Journey
 
 [![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
