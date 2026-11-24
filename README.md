@@ -1,12 +1,3 @@
-# 🚧 Work in Progress 🚧
-
-I/O Journey is under active construction. Chapters, starter code and
-commands may change at any time.
-
-Sponsored by [Raft.build](course/book/sponsor.md).
-
-[![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
-
 # I/O Journey
 
 Follow an append from a Rust application through a filesystem, a bounded
@@ -16,6 +7,17 @@ flushes two records and checks their recovery after two simulated power cuts.
 [Start here](course/START.md) for the course setup, then follow the
 [chapters](course/README.md). To build the book locally with mdBook 0.5.4,
 run `mdbook build` from the checkout and open `book/index.html`.
+
+# 🚧 Work in Progress 🚧
+
+I/O Journey is under active construction. Chapters, starter code and
+commands may change at any time.
+
+Sponsored by [Raft.build](course/book/sponsor.md).
+
+[![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
+
+AI slop warning: this whole repo is written with LLM. Chi has not fully reviewed it yet.
 
 ## Run the demo
 
