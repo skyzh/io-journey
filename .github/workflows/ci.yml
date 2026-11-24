@@ -11,6 +11,7 @@ permissions:
 jobs:
   book:
     name: Build mdBook
+    if: github.repository == 'skyzh/io-journey'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
