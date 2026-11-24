@@ -17,12 +17,19 @@ LLMs and has yet to receive Chi's full review.
 
 ## What you’ll build
 
-The Linux append lab follows this path from the application to simulated flash.
+The Linux append lab runs each I/O engine on both filesystems.
 
 ```mermaid
 flowchart TD
-    App["Userspace append engine"] -->|"Synchronous I/O or Linux io_uring"| FS["ext4 or course filesystem via FUSE"]
-    FS --> Ublk["Linux ublk virtual block device"]
+    App["Append log"]
+    App --> Sync["Synchronous engine"]
+    App --> Uring["io_uring engine"]
+    Sync --> Ext4["ext4"]
+    Sync --> Fuse["Course filesystem via FUSE"]
+    Uring --> Ext4
+    Uring --> Fuse
+    Ext4 --> Ublk["Linux ublk virtual block device"]
+    Fuse --> Ublk
     Ublk --> Queue["Rust block request and completion queue"]
     Queue --> FTL["Flash translation layer (FTL)"]
     FTL --> NAND["Simulated NAND"]
