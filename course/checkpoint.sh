@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-baseline=e2c2d782ae036d6f67359b0cff8cabc2a6eba7dc
+baseline=bf555e462084f3406bc36d2aae7bf2a5d31686c2
 
 usage() {
     printf '%s\n' 'cargo xtask checkpoint prepare {ftl|queue|filesystem|log}' \
