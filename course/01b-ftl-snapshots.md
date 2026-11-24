@@ -58,8 +58,7 @@ retained while an earlier image holds them.
 ### Recorded comparison
 
 The guest ran two sweeps per implementation with 21 repetitions per sweep.
-These medians use identical Rust 1.93.1 release flags and the source at
-`c89b7720b760262c1e800bf7c2f02bcdcbd9ea3c`.
+These medians use identical Rust 1.93.1 release flags.
 
 | Work | Full copy | Shared pages |
 | --- | ---: | ---: |
@@ -77,8 +76,7 @@ copied the same amount again. The shared version still clones 8,192 bytes
 of physical slots and 4,096 bytes of logical mapping per image. The first
 256 programs add 6,144 bytes of shared-owner storage in this build. An
 owner stays live as long as a saved image holds it. Allocation counts
-refer to requested Rust heap bytes in the probe. An earlier sweep at
-`0f3dd0a1bec2e9d97c27442ed46b189aea9575d0` measured total write-to-flush
+refer to requested Rust heap bytes in the probe. An earlier sweep measured total write-to-flush
 times of 421.48 µs and 97.44 µs, with identical heap counts. Timings refer to
 this simulated workload in OrbStack. The workload follows the deep-copy FTL
-case at `4d04bed`. [Fixture source](measure-snapshots.rs) · [Run script](measure-snapshots.sh)
+case at `34674e0`. [Fixture source](measure-snapshots.rs) · [Run script](measure-snapshots.sh)

@@ -78,7 +78,6 @@ separate costs. Compare the timings as well as the reduced scans.
 This measured example uses 102 writes per implementation and condition
 across two order-balanced sweeps on OrbStack, with Rust 1.93.1 and
 identical release build flags.
-The source measured was `cd536d0cb9e4bcf9576b944bc8b3434439f932b0`.
 
 | Geometry and timed write | NAND slots visited during search and selection, scan / indexed | Map slots, scan / indexed | Programs / erases in both | Median time, scan / indexed |
 | --- | ---: | ---: | ---: | ---: |
