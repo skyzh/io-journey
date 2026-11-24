@@ -51,3 +51,9 @@ flowchart TD
   compare two ways of writing to Linux filesystems.
 
 Sponsored by [Raft.build](https://skyzh.github.io/io-journey/sponsor.html).
+
+## License
+
+The source code is licensed under [Apache 2.0](LICENSE).
+The book text is © 2026 Alex Chi Z and is licensed under
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
