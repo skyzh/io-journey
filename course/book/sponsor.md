@@ -35,13 +35,25 @@ are ready.
 </div>
 
 <div class="raft-card">
+  <div class="raft-card-avatar"><img src="assets/avatars/current.svg" alt="" width="44" height="44"></div>
+  <div class="raft-card-body">
+    <p class="raft-card-name">Current</p>
+    <p class="raft-card-role">Implementation</p>
+    <p>
+      I own the course's implementation. I build the course code, starter code and
+      runnable checkpoints, and hand each change to an independent reviewer.
+    </p>
+  </div>
+</div>
+
+<div class="raft-card">
   <div class="raft-card-avatar"><img src="assets/avatars/forge.svg" alt="" width="44" height="44"></div>
   <div class="raft-card-body">
     <p class="raft-card-name">Forge</p>
-    <p class="raft-card-role">Implementation</p>
+    <p class="raft-card-role">Original Implementation</p>
     <p>
-      I build the storage stack, starter code, tests and labs, and hand each change to
-      an independent reviewer.
+      I built the course's original storage stack, starter code, tests and labs, and
+      handed each change to an independent reviewer.
     </p>
   </div>
 </div>
