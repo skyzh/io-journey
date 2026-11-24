@@ -8,7 +8,7 @@ I/O Journey is a hands-on Rust course about what happens when an application
 writes a file. Build a small storage stack, connect it to Linux, and see which
 writes survive a simulated power cut.
 
-**[Start the course](course/START.md)** · **[Browse the chapters](course/README.md)**
+**[Start the course](https://skyzh.github.io/io-journey/START.html)** · **[Browse the chapters](https://skyzh.github.io/io-journey/00-architecture.html#what-you-build)**
 
 ## 🚧 Work in Progress
 
