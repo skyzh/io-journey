@@ -141,3 +141,5 @@ are ready.
 [Start the course from the beginning](START.md)
 
 </div>
+
+{{#include copyright.md}}
