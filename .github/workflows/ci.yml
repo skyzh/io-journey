@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  book:
+    name: Build mdBook
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Build the book with mdBook 0.5.4
+        shell: bash
+        run: |
+          archive=mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz
+          curl --fail --silent --show-error --location \
+            --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/$archive"
+          printf '%s  %s\n' 3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7 \
+            "$RUNNER_TEMP/$archive" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" mdbook
+          export PATH="$RUNNER_TEMP:$PATH"
+          mdbook --version
+          mdbook build
+          test -s book/index.html
+
+  cargo:
+    name: Check reference and learner starter
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: "1.93.1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Rust and Cargo scratch
+        shell: bash
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustc --version
+          cargo --version
+          read -r filesystem options < <(findmnt -n -o FSTYPE,OPTIONS -T /dev/shm)
+          if [[ $filesystem != tmpfs || ,$options, == *,noexec,* ]]; then
+            echo '/dev/shm must be executable tmpfs for the course commands.' >&2
+            exit 1
+          fi
+          scratch=$(mktemp -d /dev/shm/io-journey-ci.XXXXXX)
+          printf '%s\n' "CARGO_HOME=$scratch/home" "CARGO_TARGET_DIR=$scratch/target" \
+            "TMPDIR=$scratch" >> "$GITHUB_ENV"
+      - name: Run the reference tests
+        run: cargo xtask test reference
+      - name: Verify the first unfinished learner checkpoint
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/learner-test.log"
+          status=0
+          cargo xtask test > "$log" 2>&1 || status=$?
+          cat "$log"
+          if [[ $status != 101 ]]; then
+            echo "Expected the untouched learner to exit 101, got $status." >&2
+            exit 1
+          fi
+          grep -Fqx 'test nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block ... ok' "$log"
+          grep -Fqx 'NAND to SSD · Publish the mapping' "$log"
+          grep -Fqx 'test ftl::tests::successful_programs_publish_the_new_mapping ... FAILED' "$log"
+          grep -Fqx 'map the first programmed page' "$log"
