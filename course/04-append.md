@@ -4,6 +4,32 @@ Keep your working FTL, queue, and journal. This chapter builds an append engine
 that issues bounded positional writes and acknowledges a group only
 after successful file sync.
 
+## Why acknowledge only after sync
+
+An application that tells its client "saved" makes a promise: that record
+will still be there after a crash. A successful `write` doesn't keep that
+promise. The bytes may sit in the kernel's page cache or the device's
+volatile cache. Only a successful file sync (`fsync`) waits until the
+filesystem has committed them and the device has flushed. So the engine
+acknowledges a record only after the sync that covers it returns.
+
+Syncing after every record is safe but slow, because each sync waits for
+a device flush. Group commit writes several records, syncs once, then
+acknowledges all of them together. Larger groups need fewer syncs per
+record, so throughput should rise. Each record may also wait longer for
+its group's sync, so acknowledgement latency can rise too. The lab at the
+end measures whether it does.
+
+File sync only covers the file's data and length. The file's name is a
+directory entry, which, as in [Blocks to files](03-filesystem.md), only
+becomes durable when the directory is synced. So the runner syncs the
+parent directory once, right after it creates the log file and before any
+appends.
+
+The engine records what it acknowledged as a receipt: the number of bytes
+at the front of the file that are durable. After a power cut, those bytes
+must come back exactly. Anything after them may or may not survive.
+
 ## Recover the bytes covered by a receipt
 
 Each record has a length, a checksum, and its payload. A receipt gives
@@ -69,10 +95,7 @@ cargo xtask append learner
 One release build selects the learner append code for the synchronous
 and io_uring engines. Both use the same offsets, record bytes, four
 requests per wave, and sync policy. Each fresh device takes 64 warmup
-and 256 measured records. Compare engines within a filesystem and a
-group size. Then compare groups of 4 and 32 to see how acknowledgement
-latency changes with throughput. Keep both results when repetitions
-disagree.
+and 256 measured records.
 
 The runner captures the acknowledgement count and the exact FTL flush
 before writing the visible unacknowledged tail. It removes the mount,
@@ -81,49 +104,51 @@ exactly the bytes covered by the receipt, in order and with valid
 checksums. This checks the kernel ext4 path and the learner FUSE
 filesystem backed by the learner queue and FTL.
 
-In one guest sweep every case recovered all 320 acknowledged records.
-Each cell below gives the two observations for its engine. The raw
-runner report also includes p99 and the saved checkpoint for each run.
+The lab answers two questions. Does every acknowledged record survive a
+power cut? And how do group size and engine change throughput and
+acknowledgement latency?
 
-| Filesystem and group | Engine | Records per second | Acknowledgement p50, µs |
-| --- | --- | --- | --- |
-| ext4, 4 | sync | 6841, 5883 | 584, 670 |
-| ext4, 4 | io_uring | 5974, 6158 | 667, 652 |
-| ext4, 32 | sync | 40637, 49237 | 764, 654 |
-| ext4, 32 | io_uring | 39249, 46168 | 826, 689 |
-| FUSE, 4 | sync | 7847, 8147 | 513, 431 |
-| FUSE, 4 | io_uring | 7298, 7535 | 541, 518 |
-| FUSE, 32 | sync | 29557, 39817 | 1104, 748 |
-| FUSE, 32 | io_uring | 27632, 41246 | 1179, 748 |
+For recovery, each case should print `verified all 320 acknowledged
+records`. A failure there is a correctness bug in your code, not a
+performance result.
 
-Larger groups increased throughput in every matched repeat. The
-acknowledgement p50 usually rose. The second ext4 sync repeat went
-from 670 to 654 µs. The engine comparison varied with filesystem,
-group size, and repetition. Both group-32 FUSE engines also had
-substantially different rates between their two runs.
+For performance, compare the `Records/s` and `Ack p50 µs` columns in the
+report:
+
+- **Group size.** Within one filesystem and engine, compare groups of 4
+  and 32. Check whether throughput rises at 32 and whether p50 latency
+  rises with it. Latency doesn't always move the same way in every run.
+- **Engine.** Within one filesystem and group size, compare `sync` with
+  `uring` (io_uring). The lab runs each engine twice per case. The size
+  and direction of the difference can vary between runs, so compare both
+  repeats before drawing a conclusion.
 
 ## Follow the acknowledgement across layers
 
-Use one case's receipt and the printed ublk flush. The app writes a
-known record at its explicit byte offset. File sync reaches ext4 or
-the FUSE journal. The FUSE route publishes metadata through its redo
-and marker barriers. The ublk log names the kernel tag, the inner
-Rust request ID, and the FTL checkpoint number at the observed flush.
-That checkpoint retains the NAND pages and map that the reopen uses.
-The final count and checksums connect the recovered file to the
-receipt.
+Pick one case from the lab output. Three printed lines connect the
+application's receipt to the flash:
 
-An application offset is meaningful in the file, and a kernel sector
-range is meaningful on the device. Filesystem allocation, writeback,
-and request splitting or merging prevent joining each record to a
-single kernel tag or NAND page. Use the observed flush boundary and
-the recovery result for the end-to-end check. Use the fio lab for
-measured guest block events and the demo for individual NAND program
-and map events.
+1. `Application acknowledged 320 records through file sync.` This is the
+   receipt: 64 warmup and 256 measured records.
+2. `ublk tag … request … flush … published FTL checkpoint`. After the
+   application reported its receipt, and before it wrote the
+   unacknowledged tail, the runner saved the latest durable FTL image.
+   This line is the flush that published that image. It names the Linux
+   kernel tag, the request ID in your Rust queue, and the FTL checkpoint
+   number.
+3. `Reopened FTL flush … and verified all 320 acknowledged records.` After
+   the cut, the FTL reopened that same checkpoint and the file still held
+   every acknowledged record.
 
-In the first FUSE synchronous group-4 run, the final acknowledged
-record had ID 319 and offset 163,328. The total receipt was 163,840
-bytes. The runner printed ublk tag 5, inner request 1,374, and FTL
-flush 406 for the captured checkpoint. Reopening that checkpoint
-verified the same 320 records. The observed link is the receipt
-and flush. The physical page holding record 319 stays unknown.
+Every record is 512 bytes, and IDs start at 0. So record *n* starts at byte
+offset *n* × 512. The last acknowledged record, ID 319, starts at offset
+163,328, and the receipt covers 320 × 512 = 163,840 bytes.
+
+You can't follow one record to one kernel tag or one NAND page. The
+filesystem decides where its blocks go, writes back in the background, and
+the kernel can split or merge requests. The link you can check end to end
+is the sequence. The engine acknowledged each record only after the file
+sync covering it returned. The runner then saved the latest durable
+checkpoint, and recovery from that checkpoint returned every acknowledged
+byte. To see
+individual NAND programs and mapping updates, use the demo trace instead.
