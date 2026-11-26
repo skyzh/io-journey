@@ -39,10 +39,11 @@ the operations and rerun the same check after each edit.
 1. **Program a page.** Use the physical page number to look up a mutable
    slot. Return an `InvalidInput` error if the page is outside the
    device. Return an error if the slot is already occupied and leave
-   its bytes intact. For an erased slot, store `Some(storage::keep(data))`.
+   its bytes intact. For an erased slot, store
+   `Some(super::storage::keep(data))`.
 2. **Read a page.** Return `None` for an erased slot or a page outside
-   the device. For a programmed slot, use `storage::borrow` to return
-   its block without copying it.
+   the device. For a programmed slot, use `super::storage::borrow`
+   to return its block without copying it.
 3. **Erase a block.** The caller passes a mutable slice for that whole
    block. Set each slot to `None`. The caller selects the slice, so your
    method touches only the pages in that block.
