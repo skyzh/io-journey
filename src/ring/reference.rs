@@ -1,7 +1,7 @@
 use super::{invalid_completion, Completion, Request, DEPTH};
 use std::io;
 
-pub(super) fn drain_ring_wave(
+pub fn drain_ring_wave(
     wave: &[Request],
     mut poll: impl FnMut(&mut Vec<Completion>) -> io::Result<()>,
 ) -> io::Result<()> {
@@ -12,7 +12,7 @@ pub(super) fn drain_ring_wave(
     check_completions(wave, completed)
 }
 
-pub(super) fn check_completions(wave: &[Request], completed: Vec<Completion>) -> io::Result<()> {
+pub fn check_completions(wave: &[Request], completed: Vec<Completion>) -> io::Result<()> {
     let mut seen = [false; DEPTH];
     let mut error = None;
     for completion in completed {

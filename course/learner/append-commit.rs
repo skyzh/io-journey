@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::Request;
 
-pub(super) fn commit_group(
+pub fn commit_group(
     _group: &[Request],
     _write: &mut impl FnMut(&[Request]) -> io::Result<()>,
     _sync: &mut impl FnMut() -> io::Result<()>,

@@ -21,8 +21,8 @@ esac
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 
 run_stage() {
-    local stage=$1 features=learner manifest=Cargo.toml label
-    local -a cargo_args=(--offline --lib) test_args=(--)
+    local stage=$1 features=learner label
+    local -a test_args=(--)
     case "$stage" in
         nand)
             label='NAND to SSD · Read, program, and erase NAND'
@@ -96,29 +96,19 @@ run_stage() {
             test_args=(record::tests::)
             ;;
         completions)
-            label='Efficient application I/O · Retire a bounded wave'
+            label='Efficient application I/O · Retire a bounded mock wave'
             features=learner-append
-            manifest=linux/append/Cargo.toml
-            cargo_args=()
-            test_args=(engine::tests::)
+            test_args=(ring::tests::)
             ;;
         ack)
             label='Efficient application I/O · Acknowledge after sync'
             features=learner-append
-            manifest=linux/append/Cargo.toml
-            cargo_args=()
-            test_args=(-- --skip engine::tests::)
+            test_args=(ring::commit_tests::)
             ;;
     esac
 
-    if [[ "$manifest" == linux/* && $(uname -s) != Linux ]]; then
-        printf 'The %s check uses Linux io_uring. From the checkout in a Linux shell, rerun %s\n' \
-            "$stage" "$retry" >&2
-        return 1
-    fi
-
     printf '\n%s\n' "$label"
-    cargo test --locked --manifest-path "$repo_dir/$manifest" --features "$features" "${cargo_args[@]}" "${test_args[@]}" || {
+    cargo test --locked --offline --lib --manifest-path "$repo_dir/Cargo.toml" --features "$features" "${test_args[@]}" || {
         local status=$?
         printf 'Retry from the course checkout with %s\n' "$retry" >&2
         return "$status"

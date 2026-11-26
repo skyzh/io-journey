@@ -2,12 +2,12 @@ use std::io;
 
 use super::{Completion, Request};
 
-pub(super) fn check_completions(_wave: &[Request], _completed: Vec<Completion>) -> io::Result<()> {
+pub fn check_completions(_wave: &[Request], _completed: Vec<Completion>) -> io::Result<()> {
     // TODO: Match every completion ID once and require the full byte count.
     Err(io::Error::other("implement completion validation"))
 }
 
-pub(super) fn drain_ring_wave(
+pub fn drain_ring_wave(
     _wave: &[Request],
     _poll: impl FnMut(&mut Vec<Completion>) -> io::Result<()>,
 ) -> io::Result<()> {

@@ -1,11 +1,3 @@
-#[cfg_attr(
-    feature = "learner-append",
-    path = "../../../course/learner/append-completions.rs"
-)]
-#[cfg_attr(not(feature = "learner-append"), path = "engine/reference.rs")]
-mod completion;
-use completion::{check_completions, drain_ring_wave};
-
 use std::fs::File;
 use std::io;
 use std::os::fd::AsRawFd;
@@ -14,15 +6,8 @@ use std::sync::{mpsc, Arc};
 use std::thread::{self, JoinHandle};
 
 use io_uring::{opcode, types, IoUring};
-
-pub const DEPTH: usize = 4;
-
-#[derive(Clone)]
-pub struct Request {
-    pub id: u64,
-    pub offset: u64,
-    pub bytes: Arc<[u8]>,
-}
+use io_journey::ring::{check_completions, drain_ring_wave, Completion};
+pub use io_journey::ring::{Request, DEPTH};
 
 pub enum Engine {
     Sync(Blocking),
@@ -52,12 +37,6 @@ impl Engine {
             Self::Ring(engine) => engine.write_wave(wave),
         }
     }
-}
-
-#[cfg_attr(feature = "learner-append", allow(dead_code))]
-struct Completion {
-    id: u64,
-    result: io::Result<usize>,
 }
 
 pub struct Blocking {
