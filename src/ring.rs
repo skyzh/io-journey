@@ -9,7 +9,6 @@ use std::sync::Arc;
 )]
 #[cfg_attr(not(feature = "learner-append"), path = "ring/reference.rs")]
 mod completion;
-pub use completion::{check_completions, drain_ring_wave};
 
 #[cfg_attr(
     feature = "learner-append",
@@ -31,6 +30,29 @@ pub struct Request {
 pub struct Completion {
     pub id: u64,
     pub result: io::Result<usize>,
+}
+
+fn validate_wave(wave: &[Request]) -> io::Result<()> {
+    if wave.is_empty() || wave.len() > DEPTH {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "write wave must contain one to four requests",
+        ));
+    }
+    Ok(())
+}
+
+pub fn check_completions(wave: &[Request], completed: Vec<Completion>) -> io::Result<()> {
+    validate_wave(wave)?;
+    completion::check_completions(wave, completed)
+}
+
+pub fn drain_ring_wave(
+    wave: &[Request],
+    poll: impl FnMut(&mut Vec<Completion>) -> io::Result<()>,
+) -> io::Result<()> {
+    validate_wave(wave)?;
+    completion::drain_ring_wave(wave, poll)
 }
 
 struct MockRing {
@@ -103,18 +125,13 @@ pub fn mock_write_wave(
     wave: &[Request],
     mut write: impl FnMut(&Request) -> io::Result<usize>,
 ) -> io::Result<()> {
-    if wave.is_empty() || wave.len() > DEPTH {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "mock write wave must fit the submission queue",
-        ));
-    }
+    validate_wave(wave)?;
     let mut ring = MockRing::new(wave.len());
     for request in wave {
         ring.submit(request.clone())
             .map_err(|_| io::Error::other("mock submission queue is full"))?;
     }
-    drain_ring_wave(wave, |completions| {
+    completion::drain_ring_wave(wave, |completions| {
         completions.push(ring.poll(&mut write)?);
         Ok(())
     })
@@ -140,6 +157,17 @@ pub fn demo() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_validation_rejects_invalid_wave_sizes_before_polling() {
+        let oversized = vec![request(1, 0, *b"abc"); DEPTH + 1];
+        for wave in [&[][..], oversized.as_slice()] {
+            let checked = check_completions(wave, Vec::new()).unwrap_err();
+            assert_eq!(checked.kind(), io::ErrorKind::InvalidInput);
+            let drained = drain_ring_wave(wave, |_| panic!("invalid wave was polled")).unwrap_err();
+            assert_eq!(drained.kind(), io::ErrorKind::InvalidInput);
+        }
+    }
 
     #[test]
     fn bounded_submission_and_completion_queues_apply_backpressure() {
