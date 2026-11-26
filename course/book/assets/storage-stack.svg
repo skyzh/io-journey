@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 824" width="700" height="824" role="img" aria-labelledby="title description">
   <title id="title">I/O Journey storage paths</title>
-  <desc id="description">The append log uses a synchronous or io_uring engine with ext4 or FUSE. Both filesystems use the Linux block layer. The ublk lab uses the course's Rust queue, flash translation layer, and simulated NAND. Physical storage is an alternative device path. A planned path would use the Linux NVMe driver and an emulated NVMe controller with the same Rust queue.</desc>
+  <desc id="description">A user application can use a synchronous or io_uring engine with ext4 or FUSE. Both filesystems use the Linux block layer. The ublk lab uses the course's Rust queue, flash translation layer, and simulated NAND. Physical storage is an alternative device path. A planned path would use the Linux NVMe driver and an emulated NVMe controller with the same Rust queue.</desc>
   <rect x="1" y="1" width="698" height="822" rx="20" fill="#f8fafc" stroke="#b4c7d8"/>
 
   <g fill="none" stroke="#345b7c" stroke-width="2">
@@ -63,7 +63,7 @@
   </g>
 
   <g font-family="system-ui, -apple-system, sans-serif" font-size="20" text-anchor="middle" fill="#14324a">
-    <text x="350" y="57" font-weight="650">Append log</text>
+    <text x="350" y="57" font-weight="650">User application</text>
     <text x="165" y="151">Synchronous engine</text>
     <text x="535" y="151">io_uring engine</text>
     <text x="165" y="262">ext4</text>

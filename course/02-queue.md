@@ -40,10 +40,13 @@ the earlier range has finished. The supplied `Ftl::flush` takes
 durable image. Run the check again to verify the reopened blocks, range
 validation, backpressure, and cancellation after a failed block.
 
-## Choose a Linux tag to serve
+<a id="choose-a-linux-tag-to-serve"></a>
 
-The outer ublk scheduler chooses which kernel tag to send to the inner
-Rust queue. It sees a ready batch from Linux. Keep the inner queue FIFO
+## Choose a device request to serve
+
+The ublk adapter plays the device. Its dispatcher chooses among tags
+Linux has already sent to it, before forwarding each request to the
+Rust device queue. Keep that queue FIFO
 and implement the read-first choice in
 [`course/learner/dispatch.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/dispatch.rs).
 
@@ -58,55 +61,9 @@ check for disjoint and overlapping reads, a flush boundary, and overflow.
 
 ## Compare on the guest
 
-The mounted labs in this chapter build a Linux adapter with a fresh Cargo
-cache. Give the build access to the Cargo registry or a configured mirror.
+The [Linux block-device lab](linux-ublk.md) runs your device queue
+through ublk. It includes the ext4 recovery check and a fio comparison.
+You can continue to host scheduling on macOS.
 
-For an optional first look at the kernel using your virtual disk, see the
-[ext4 smoke check](https://github.com/skyzh/io-journey/blob/main/linux/ublk/README.md).
-It uses Linux’s supplied filesystem.
-
-Use the [fio and tracing prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/ublk/QUEUE_BENCHMARK.md).
-Run from the checkout in the [root guest shell](START.md#mounted-labs).
-
-```sh
-cargo xtask queue learner
-```
-
-The adapter builds your FTL, inner queue, and dispatch from this
-checkout. A missing learner module stops the build before a device
-is allocated. The two policies share that binary. Read the 4 KiB, depth-eight
-pairs before changing request size or depth. Check that Linux block issue
-bytes equal the bytes completed successfully by the server. The report
-accounts for any excess over fio. Linux completions feed the latency
-join. Compare requested depth with
-the achieved depth, then compare server queue wait, fio read p99, and
-throughput. Reads that advance in the server can still see higher
-end-to-end latency if work is batched differently. The guest trace
-covers the device and the NAND counters cover the simulator.
-
-### Recorded comparison
-
-The author's learner build ran six fio cases with equal Linux issue and successful
-server byte counts, with zero excess over fio. In each 4 KiB pair below
-both arms issued 11,677,696 read bytes
-and 5,099,520 write bytes. All four runs requested depth eight.
-
-| Pair and policy | Achieved depth | Reads advanced | Server read wait p99 | fio read p99 | Throughput |
-| --- | --- | ---: | ---: | ---: | ---: |
-| 1 FIFO | 2 at 0.2%, 4 at 96.9%, 8 at 2.9% | 0 | 11.4 µs | 27.8 µs | 1,600 MiB/s |
-| 1 read-first | 2 at 1.4%, 4 at 91.8%, 8 at 6.8% | 881 | 6.0 µs | 42.8 µs | 1,455 MiB/s |
-| 2 read-first | 8 at 100% | 793 | 7.4 µs | 32.1 µs | 1,455 MiB/s |
-| 2 FIFO | 8 at 100% | 0 | 11.2 µs | 26.8 µs | 1,600 MiB/s |
-
-In this guest sweep the eligible reads advanced and waited less in
-the server. End-to-end p99 grew and throughput fell in both pairs.
-A separate learner walkthrough also found shorter server wait. Its
-fio p99 fell and throughput rose in both pairs, with different
-achieved-depth distributions. Compare each sweep using the achieved
-depths reported by fio.
-In the author's sweep, the depth-one run achieved depth one throughout,
-and the 16 KiB run achieved depth eight. The benchmark's report retains
-both rows with their request sizes, byte counts, and timings.
-
-Next, [Blocks to files](03-filesystem.md) uses your queue for the
-filesystem’s block writes and flushes.
+Next, [Host block scheduling](02a-scheduler.md) chooses which waiting
+request to send before it enters the device queue.
