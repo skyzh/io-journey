@@ -1,6 +1,8 @@
 # Linux labs
 
-The main course runs on macOS or Linux and doesn't need any of these labs.
+The main chapters don't need any of these labs. Their focused checks run
+on macOS or Linux. Chapter 4's completion and acknowledgement checks still
+need Linux for now. A portable version is on the way.
 Each one takes code you wrote in a main chapter and runs it on a real
 Linux kernel, where ordinary programs and the kernel's own block layer can
 use it. Do a lab after the chapter it builds on.

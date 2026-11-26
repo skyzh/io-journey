@@ -87,5 +87,5 @@ new receipts. Then run `cargo xtask test` to check the whole stack together.
 
 The [Linux lab: append on a real kernel](linux-append.md) runs the same
 append engine against Linux's `io_uring` and both ext4 and your FUSE
-filesystem. It cuts power on the device and checks that every
-acknowledged record comes back.
+filesystem. It simulates a power cut by reopening a saved device
+checkpoint, and checks that every acknowledged record comes back.
