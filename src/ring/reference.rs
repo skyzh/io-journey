@@ -1,4 +1,4 @@
-use super::{invalid_completion, Completion, Request, DEPTH};
+use super::{Completion, Request, DEPTH};
 use std::io;
 
 pub fn drain_ring_wave(
@@ -42,4 +42,8 @@ pub fn check_completions(wave: &[Request], completed: Vec<Completion>) -> io::Re
         return Err(invalid_completion("missing completion ID"));
     }
     error.map_or(Ok(()), Err)
+}
+
+fn invalid_completion(message: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
 }

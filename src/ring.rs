@@ -33,11 +33,6 @@ pub struct Completion {
     pub result: io::Result<usize>,
 }
 
-#[cfg(not(feature = "learner-append"))]
-fn invalid_completion(message: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, message)
-}
-
 struct MockRing {
     capacity: usize,
     submissions: VecDeque<Request>,
