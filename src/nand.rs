@@ -9,6 +9,10 @@ use crate::free_space::FreePages;
 mod storage;
 use storage::StoredPage;
 
+#[cfg_attr(feature = "learner-nand", path = "../course/learner/nand.rs")]
+#[cfg_attr(not(feature = "learner-nand"), path = "nand/reference.rs")]
+mod operations;
+
 pub const BLOCK_BYTES: usize = 4096;
 pub(crate) const PAGES_PER_ERASE_BLOCK: usize = 4;
 pub(crate) const ERASE_BLOCKS: usize = 4;
@@ -94,7 +98,7 @@ impl Nand {
     }
 
     pub(crate) fn read(&self, page: usize) -> Option<&Block> {
-        self.pages.get(page)?.as_ref().map(storage::borrow)
+        operations::read_page(&self.pages, page)
     }
 
     #[cfg(not(feature = "learner"))]
@@ -159,15 +163,7 @@ impl Nand {
     }
 
     pub(crate) fn program(&mut self, page: usize, data: Block) -> io::Result<()> {
-        let slot = self.pages.get_mut(page).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "physical page out of range")
-        })?;
-        if slot.is_some() {
-            return Err(io::Error::other(
-                "NAND page must be erased before programming",
-            ));
-        }
-        *slot = Some(storage::keep(data));
+        operations::program_page(&mut self.pages, page, data)?;
         #[cfg(feature = "indexed-ftl")]
         self.free
             .record_program(page, page / self.geometry.pages_per_erase_block());
@@ -178,7 +174,7 @@ impl Nand {
 
     pub(crate) fn erase(&mut self, erase_block: usize) {
         let pages = self.geometry.erase_block_pages(erase_block);
-        self.pages[pages.clone()].fill(None);
+        operations::erase_pages(&mut self.pages[pages.clone()]);
         #[cfg(feature = "indexed-ftl")]
         self.free.record_erase(erase_block, pages);
         #[cfg(not(feature = "learner"))]
@@ -194,6 +190,7 @@ mod tests {
     fn programming_requires_an_erased_page_and_erase_clears_the_whole_block() {
         let geometry = NandGeometry::new(ERASE_BLOCKS, PAGES_PER_ERASE_BLOCK).unwrap();
         let mut nand = Nand::new(geometry).unwrap();
+        assert!(nand.read(0).is_none());
         nand.program(0, Box::new([0x12; BLOCK_BYTES])).unwrap();
         nand.program(1, Box::new([0x34; BLOCK_BYTES])).unwrap();
         nand.program(4, Box::new([0x56; BLOCK_BYTES])).unwrap();
@@ -205,5 +202,16 @@ mod tests {
         assert!(nand.read(1).is_none());
         assert_eq!(nand.read(4).unwrap()[0], 0x56);
         nand.program(0, Box::new([0x78; BLOCK_BYTES])).unwrap();
+    }
+    #[test]
+    fn access_outside_the_device_is_rejected() {
+        let geometry = NandGeometry::new(ERASE_BLOCKS, PAGES_PER_ERASE_BLOCK).unwrap();
+        let mut nand = Nand::new(geometry).unwrap();
+        let page = geometry.physical_pages();
+        assert!(nand.read(page).is_none());
+        let error = nand
+            .program(page, Box::new([0x12; BLOCK_BYTES]))
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 }

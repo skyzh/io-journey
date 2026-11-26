@@ -2,16 +2,16 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use cargo xtask learner {previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use cargo xtask learner {nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
 case "$1" in
     all)
-        stages=(previous map collect check admit order flush dispatch commit replay receipt completions ack)
+        stages=(nand map collect check admit order flush dispatch commit replay receipt completions ack)
         retry='cargo xtask test'
         ;;
-    previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack)
+    nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack)
         stages=("$1")
         retry="cargo xtask learner $1"
         ;;
@@ -24,7 +24,13 @@ run_stage() {
     local stage=$1 features=learner manifest=Cargo.toml label
     local -a cargo_args=(--offline --lib) test_args=()
     case "$stage" in
+        nand)
+            label='NAND to SSD · Read, program, and erase NAND'
+            features=learner-nand
+            test_args=(nand::tests::)
+            ;;
         previous)
+            features=
             label='Supplied NAND programming and erasure'
             test_args=(nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block -- --exact)
             ;;

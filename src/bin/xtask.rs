@@ -16,7 +16,7 @@ Mounted labs (Linux root):
   cargo xtask append [learner]
 
 Individual checks and development tools:
-  cargo xtask learner <stage>
+  cargo xtask learner <nand|stage>
   cargo xtask checkpoint prepare <ftl|queue|filesystem|log>
   cargo xtask checkpoint <previous|check|faults> <directory>
   cargo xtask ftl-collection

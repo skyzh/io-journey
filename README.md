@@ -41,8 +41,8 @@ flowchart TD
     FTL --> NAND["Simulated NAND"]
 ```
 
-- [NAND to SSD](course/01-ftl.md) — Build the layer that makes flash behave
-  like a disk, and test overwrite, collection, and recovery.
+- [NAND to SSD](course/01-ftl.md) — Implement NAND page operations, then make flash behave like a disk
+  and test overwrite, collection, and recovery.
 - [Blocks in flight](course/02-queue.md) — Build a block queue and see how it
   handles competing requests.
 - [Blocks to files](course/03-filesystem.md) — Build a small filesystem and

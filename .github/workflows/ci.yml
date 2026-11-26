@@ -62,7 +62,6 @@ jobs:
             echo "Expected the untouched learner to exit 101, got $status." >&2
             exit 1
           fi
-          grep -Fqx 'test nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block ... ok' "$log"
-          grep -Fqx 'NAND to SSD · Publish the mapping' "$log"
-          grep -Fqx 'test ftl::tests::successful_programs_publish_the_new_mapping ... FAILED' "$log"
-          grep -Fqx 'map the first programmed page' "$log"
+          grep -Fqx 'NAND to SSD · Read, program, and erase NAND' "$log"
+          grep -Fqx 'test nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block ... FAILED' "$log"
+          grep -Fq 'implement NAND page programming' "$log"
