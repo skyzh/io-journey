@@ -32,6 +32,17 @@ jobs:
           mdbook --version
           mdbook build
           test -s book/index.html
+      - name: Upload generated book
+        if: >-
+          ${{
+            github.event_name == 'push' &&
+            github.ref == 'refs/heads/main' &&
+            github.ref_protected &&
+            toJSON(github.event.repository.private) == 'false'
+          }}
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: book
 
   cargo:
     name: Check reference and learner starter
@@ -65,3 +76,52 @@ jobs:
           grep -Fqx 'NAND to SSD · Read, program, and erase NAND' "$log"
           grep -Fqx 'test nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block ... FAILED' "$log"
           grep -Fq 'implement NAND page programming' "$log"
+
+  deploy:
+    name: Deploy book
+    if: >-
+      ${{
+        github.repository == 'skyzh/io-journey' &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        github.ref_protected &&
+        toJSON(github.event.repository.private) == 'false'
+      }}
+    needs: [book, cargo]
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Verify the public protected main revision
+        id: publishing-source
+        shell: bash
+        run: |
+          public_api() {
+            curl --disable --fail --silent --show-error --max-time 15 \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'Cache-Control: no-cache' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY$1"
+          }
+          public_api "" |
+            jq -e --arg repository "$GITHUB_REPOSITORY" \
+              '.full_name == $repository and .private == false and .visibility == "public"' >/dev/null
+          main_sha=$(public_api /branches/main |
+            jq -er 'select(.name == "main" and .protected == true) |
+              .commit.sha | select(type == "string" and test("^[0-9a-f]{40}$"))')
+          if [[ "$main_sha" == "$GITHUB_SHA" ]]; then
+            printf '%s\n' 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            printf '%s\n' 'Main advanced while CI ran. Leaving publication to the current revision.'
+          fi
+      - name: Deploy to GitHub Pages
+        if: steps.publishing-source.outputs.current == 'true'
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
