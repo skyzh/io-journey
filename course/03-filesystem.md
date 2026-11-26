@@ -117,24 +117,8 @@ changing the file. An aligned shrink only drops a whole block
 reference. After sync it reclaims that block and recovers the
 shorter file.
 
-## Mount this filesystem
-
-Use the [FUSE prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/fuse/README.md).
-From the checkout in the [root guest shell](START.md#mounted-labs), run
-both backends.
-
-```sh
-cargo xtask fuse image learner
-cargo xtask fuse ublk learner
-```
-
-The first command uses the learner journal on a disk-backed image. The
-second uses the same journal with the learner FTL and queue behind
-ublk. The lab supplies the application workload. Follow its acknowledged
-append and then the replacement.
-The open descriptor still sees the earlier file through the
-rename. The recovered name points to the complete replacement
-and the final inspection finds two allocated data blocks.
+Want to mount this filesystem and use it from ordinary Linux programs?
+See the [Linux lab: mount your filesystem](linux-filesystem.md).
 
 Next, [Efficient application I/O](04-append.md) adds the append engine
 and compares it on the complete stack.
