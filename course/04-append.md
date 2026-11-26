@@ -82,7 +82,7 @@ completions from the real kernel engine.
 When the completion checks pass, run `cargo xtask learner ack`. The group check reaches
 `implement group acknowledgement`. Open
 [`course/learner/append-commit.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/append-commit.rs) and write
-the group in chunks of `DEPTH`. Once all waves in the group succeed,
+the group in chunks of `super::DEPTH`. Once all waves in the group succeed,
 sync the file once. Add one receipt per record only after that sync
 succeeds. Each
 latency runs from the start of the group to that point.
