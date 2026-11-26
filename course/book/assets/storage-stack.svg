@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 824" width="700" height="824" role="img" aria-labelledby="title description">
+  <title id="title">I/O Journey storage paths</title>
+  <desc id="description">The append log uses a synchronous or io_uring engine with ext4 or FUSE. Both filesystems use the Linux block layer. The ublk lab uses the course's Rust queue, flash translation layer, and simulated NAND. Physical storage is an alternative device path. A planned path would use the Linux NVMe driver and an emulated NVMe controller with the same Rust queue.</desc>
+  <rect x="1" y="1" width="698" height="822" rx="20" fill="#f8fafc" stroke="#b4c7d8"/>
+
+  <g fill="none" stroke="#345b7c" stroke-width="2">
+    <path d="M324 78L180 113"/>
+    <path d="M376 78L520 113"/>
+    <path d="M145 174V224"/>
+    <path d="M186 174L478 224"/>
+    <path d="M514 174L222 224"/>
+    <path d="M555 174V224"/>
+    <path d="M180 284L323 322"/>
+    <path d="M520 284L377 322"/>
+    <path d="M286 382L120 422"/>
+    <path d="M350 382V422"/>
+    <path d="M120 502V546L273 579"/>
+    <path d="M350 636V665"/>
+    <path d="M350 722V751"/>
+  </g>
+  <g fill="#345b7c">
+    <polygon points="180,113 192.2,103.9 195.0,115.5"/>
+    <polygon points="520,113 505.0,115.5 507.8,103.9"/>
+    <polygon points="145,224 139.0,210.0 151.0,210.0"/>
+    <polygon points="478,224 463.2,227.6 465.2,215.7"/>
+    <polygon points="222,224 234.8,215.7 236.8,227.6"/>
+    <polygon points="555,224 549.0,210.0 561.0,210.0"/>
+    <polygon points="323,322 307.9,324.2 311.0,312.6"/>
+    <polygon points="377,322 389.0,312.6 392.1,324.2"/>
+    <polygon points="120,422 132.2,412.9 135.0,424.6"/>
+    <polygon points="350,422 344.0,408.0 356.0,408.0"/>
+    <polygon points="273,579 258.0,581.9 260.6,570.2"/>
+    <polygon points="350,665 344.0,651.0 356.0,651.0"/>
+    <polygon points="350,751 344.0,737.0 356.0,737.0"/>
+  </g>
+  <g fill="none" stroke="#765273" stroke-width="2" stroke-dasharray="7 5">
+    <path d="M414 382L580 422"/>
+    <path d="M555 502V538"/>
+    <path d="M480 572L459 589"/>
+  </g>
+  <g fill="#765273">
+    <polygon points="580,422 565.0,424.6 567.8,412.9"/>
+    <polygon points="555,538 549.0,524.0 561.0,524.0"/>
+    <polygon points="459,589 466.1,575.5 473.7,584.9"/>
+  </g>
+
+  <g stroke="#84a7c3">
+    <rect x="235" y="22" width="230" height="56" rx="10" fill="#dbeafa"/>
+    <rect x="45" y="114" width="240" height="60" rx="10" fill="#eaf3fb"/>
+    <rect x="415" y="114" width="240" height="60" rx="10" fill="#eaf3fb"/>
+    <rect x="45" y="225" width="240" height="59" rx="10" fill="#eaf3fb"/>
+    <rect x="415" y="225" width="240" height="59" rx="10" fill="#eaf3fb"/>
+    <rect x="235" y="323" width="230" height="59" rx="10" fill="#dbeafa"/>
+    <rect x="20" y="423" width="200" height="79" rx="10" fill="#dbeafa"/>
+    <rect x="250" y="423" width="200" height="79" rx="10" fill="#eef2f6"/>
+    <rect x="242" y="580" width="216" height="56" rx="10" fill="#dbeafa"/>
+    <rect x="210" y="666" width="280" height="56" rx="10" fill="#dbeafa"/>
+    <rect x="242" y="752" width="216" height="48" rx="10" fill="#dbeafa"/>
+  </g>
+  <g fill="#f6edf6" stroke="#a17a9d" stroke-dasharray="6 4">
+    <rect x="480" y="423" width="200" height="79" rx="10"/>
+    <rect x="480" y="539" width="200" height="68" rx="10"/>
+  </g>
+
+  <g font-family="system-ui, -apple-system, sans-serif" font-size="20" text-anchor="middle" fill="#14324a">
+    <text x="350" y="57" font-weight="650">Append log</text>
+    <text x="165" y="151">Synchronous engine</text>
+    <text x="535" y="151">io_uring engine</text>
+    <text x="165" y="262">ext4</text>
+    <text x="535" y="249">Course filesystem</text>
+    <text x="535" y="272">via FUSE</text>
+    <text x="350" y="360" font-weight="650">Linux block layer</text>
+    <text x="120" y="448" font-weight="650">ublk</text>
+    <text x="120" y="469" font-weight="400" font-size="17">Virtual block device</text>
+    <text x="120" y="490" font-weight="400" font-size="16">Current lab</text>
+    <text x="350" y="457">Physical</text>
+    <text x="350" y="480">block device</text>
+    <text x="350" y="603">Rust block request</text>
+    <text x="350" y="625">and completion queue</text>
+    <text x="350" y="701">Flash translation layer (FTL)</text>
+    <text x="350" y="783">Simulated NAND</text>
+  </g>
+  <g font-family="system-ui, -apple-system, sans-serif" font-size="19" text-anchor="middle" fill="#5d365a">
+    <text x="580" y="455">Linux NVMe driver</text>
+    <text x="580" y="478" font-size="16">TBD</text>
+    <text x="580" y="565">Emulated NVMe</text>
+    <text x="580" y="588">controller · TBD</text>
+    <text x="622" y="522" font-size="14">NVMe commands</text>
+  </g>
+</svg>
