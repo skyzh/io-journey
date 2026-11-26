@@ -38,6 +38,12 @@ performance result.
 For performance, compare the `Records/s` and `Ack p50 µs` columns in the
 report:
 
+Compare results within one filesystem before comparing across them. On
+ext4 the file writes are buffered in the kernel's page cache, while this
+FUSE adapter opens files with direct I/O
+([FUSE I/O modes](https://docs.kernel.org/filesystems/fuse/fuse-io.html)),
+so the two filesystems do different work for the same append.
+
 - **Group size.** Within one filesystem and engine, compare groups of 4
   and 32. Check whether throughput rises at 32 and whether p50 latency
   rises with it. Latency doesn't always move the same way in every run.

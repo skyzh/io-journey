@@ -52,8 +52,10 @@ the backing device may still hold that write in its own volatile cache.
 The third case checks that an eviction failure leaves the dirty bytes
 readable and that a failed flush keeps the entries dirty for a retry.
 
-The userspace cache decides when to send blocks to the device. The
-device’s flush establishes the simulator’s recovery boundary. Next the
+The userspace cache decides when to write blocks to whatever sits below
+it: the test device in this exercise, and the journaled filesystem in the
+final run. In this exercise, the device’s flush establishes the
+simulator’s recovery boundary. Next the
 journal decides which file and directory changes to publish at that
 boundary.
 

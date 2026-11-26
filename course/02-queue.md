@@ -68,8 +68,8 @@ validation, backpressure, and cancellation after a failed block.
 ## Choose a device request to serve
 
 A device doesn't have to serve waiting requests in arrival order. When
-several accepted requests are waiting, the device's dispatcher can pick
-one. For example, it can let a read go ahead of an earlier write, so the
+several requests have reached the device but haven't entered its FIFO
+queue yet, the device's dispatcher picks which one to admit next. For example, it can let a read go ahead of an earlier write, so the
 read isn't stuck behind slower work. It must never let a read pass a write
 to the same blocks, because the read would return stale data. It must
 never move anything across a flush.
