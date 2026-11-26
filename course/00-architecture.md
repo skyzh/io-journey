@@ -103,8 +103,9 @@ and checks that the same two records survive that too.
 
 Chapter 1 starts with the NAND operations and builds the FTL on top.
 Each later chapter runs on the code you wrote in the earlier ones. After
-Chapter 4, one command runs your whole stack, cuts power and checks what
-survived. Everything in the main chapters runs on macOS or Linux. The
-optional [Linux labs](linux-labs.md) run the same code on a real kernel.
+Chapter 4, one command runs your whole stack, simulates a power cut and
+checks what survived. Everything in the main chapters runs on macOS or
+Linux. The optional [Linux labs](linux-labs.md) run your learner modules
+with real kernel interfaces.
 
 Next, [set up your environment and run the demo](START.md).

@@ -102,8 +102,8 @@ cargo xtask demo learner
 This runs a small application on your journaled filesystem, cache,
 scheduler, queue and FTL, all on the simulated NAND, on macOS or Linux.
 It first checks aligned random reads and writes and mixed I/O. Then it
-appends log records, syncs, appends one more without syncing, and cuts
-power. The end of the output shows what survived:
+appends log records, syncs, appends one more without syncing, and
+simulates a power cut by reopening the last durable image. The end of the output shows what survived:
 
 ```text
 Acknowledged 2 records after sync.
