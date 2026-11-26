@@ -3,9 +3,23 @@
 By the end of this chapter, the simulated device behaves like a small SSD.
 You can overwrite any logical block, and the FTL writes the new data to a
 fresh NAND page and records where it went. When erased pages run low, the
-FTL frees space without losing data. If you haven't read the
-[overview](00-architecture.md), its "What NAND allows" section explains why
-an SSD works this way.
+FTL frees space without losing data.
+
+## What NAND allows
+
+NAND flash has three operations, and the course's model in
+[`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs)
+enforces simplified versions of these limits.
+
+- **Read** a page.
+- **Program** an erased page. Erased flash reads as `0xFF` bytes, and
+  programming can only change bits from 1 to 0. Some NAND devices permit a limited
+  number of partial-page programs before the next erase.
+  [Macronix datasheet, Table 18](https://www.macronix.com/Lists/Datasheet/Attachments/9075/MX35LF1GE4AB%2C%203V%2C%201Gb%2C%20v2.0.pdf#page=44)
+  The model allows one program per page between erases. For a valid page
+  index, `Nand::read` returns `None` for an erased page.
+- **Erase** a whole erase block at once. Here a block has 4 pages; real
+  chips have far more. There is no way to erase a single page.
 
 ## The device
 
@@ -21,6 +35,12 @@ physical NAND pages. The pages form 4 erase blocks of 4 pages:
 
 There are twice as many pages as LBAs, so an overwrite always has
 somewhere new to go, and collection always has room to work.
+
+512-byte logical sectors are common, including on drives that emulate
+them over 4 KiB physical sectors. The course simplifies the model by
+using 4 KiB logical blocks, each sized to fit one simulated NAND page.
+The Linux ublk adapter advertises a 4 KiB logical sector.
+[Logical and physical sector sizes](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/hard-drives-and-partitions?view=windows-11)
 
 ## Implement the NAND operations
 
@@ -57,6 +77,23 @@ When both NAND tests pass, you have the device operations the FTL needs.
 The FTL keeps track of which physical page holds each logical block.
 
 ## Connect the FTL to NAND
+
+The FTL gives the host a stable address for each 4 KiB block while
+moving its data underneath. It does this in three parts.
+
+- **Out-of-place writes.** Every write, including an overwrite, programs
+  a fresh erased page.
+- **A mapping.** A table records which page currently holds each LBA.
+  Reads follow the table. An overwrite changes one entry and leaves the
+  old page stale.
+- **Garbage collection.** Stale pages are wasted space, and they can only
+  be reclaimed by erasing their whole block. When erased pages run low,
+  the FTL picks a block with stale pages and copies any live pages in it
+  somewhere else. Then it updates their mappings and erases the block.
+  In this geometry ordinary writes start collection at four or fewer
+  erased pages, one erase block's worth. A torn program can use one of
+  those pages before collection runs. If fewer than four erased pages
+  remain, reopening the device collects to restore the reserve.
 
 Most of the FTL is supplied. You write two methods in
 [`course/learner/ftl.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/ftl.rs):
@@ -180,6 +217,22 @@ this chapter also checks that:
 
 The supplied code handles the torn programs. The tests check that your
 mapping and relocation keep them safe.
+
+## What a flush saves
+
+An SSD keeps all or part of its mapping in RAM while it runs. RAM is lost
+at power-off, so the drive also writes enough metadata to persistent media
+to rebuild the mapping after a sudden power loss. SPDK's software FTL, for
+example, [pages mapping entries in and out of a RAM cache](https://spdk.io/doc/ftl.html#ftl_l2p)
+and [rebuilds the map from persistent metadata after a dirty shutdown](https://spdk.io/doc/ftl.html#ftl_dirty_shutdown).
+
+This course's model takes a shortcut. A flush saves a copy of the NAND
+pages and the mapping together, in RAM, as one step. A simulated power cut
+keeps only that copy, plus any partial bytes a torn program left on its
+page. This is enough to show what a flush promises: which writes survive
+a cut, and why a half-finished program must not replace a complete one.
+It doesn't show how a drive stores its own mapping on flash. That would be
+a separate exercise.
 
 ### What survives a torn program?
 
