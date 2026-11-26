@@ -11,7 +11,7 @@ Use a Linux machine, a remote Linux server, or a Linux VM. On macOS,
 use any VM that supports the kernel features needed by the labs you
 want to run. OrbStack is one environment the author tested.
 
-Open a Linux shell and check that Rust, Cargo, and Bash are available.
+Open a Linux shell. You’ll need Git, Rust, Cargo, and Bash.
 
 ```sh
 rustc --version
@@ -51,22 +51,15 @@ the two records that survive the cuts.
 
 ## Test your own implementation
 
-From the course checkout, use the same command after each edit.
+Start with [Chapter 1’s focused checks](01-ftl.md#run-the-check).
+The supplied NAND check passes. The first mapping check shows the
+behavior you will implement. Each chapter gives you a command to
+rerun after each edit.
 
-```sh
-cargo xtask test
-```
-
-The command checks the supplied NAND first, then tests the exercises in
-chapter order. It stops at the first failing check and names the step
-to work on next. When that step passes, the command can reach the next
-exercise, which may still fail until you implement it.
-
-The command sets Cargo features to compile your files under
-`course/learner/`. Later features keep your earlier modules active, so
-the queue builds on your FTL and the journal and append chapters keep
-using your earlier work. Keep editing in this one checkout through the
-four chapters. The demo and `cargo xtask test reference` use the supplied
-implementation.
+Keep editing in this one checkout. The checks select learner code
+under `course/learner/`, and later chapters build on the modules
+you completed earlier. In the final chapter, run `cargo xtask test`
+to check all four layers together. The demo and
+`cargo xtask test reference` use the supplied implementation.
 
 Next, start [NAND to SSD](01-ftl.md).
