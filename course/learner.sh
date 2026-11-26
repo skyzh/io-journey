@@ -2,16 +2,16 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use cargo xtask learner {nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use cargo xtask learner {nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|cache|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
 case "$1" in
     all)
-        stages=(nand map collect check admit order flush dispatch scheduler commit replay receipt completions ack)
+        stages=(nand map collect check admit order flush dispatch scheduler cache commit replay receipt completions ack)
         retry='cargo xtask test'
         ;;
-    nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|commit|replay|receipt|completions|ack)
+    nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|cache|commit|replay|receipt|completions|ack)
         stages=("$1")
         retry="cargo xtask learner $1"
         ;;
@@ -79,6 +79,11 @@ run_stage() {
             label='Block scheduling · Dispatch without crossing dependencies'
             features=learner-scheduler
             test_args=(scheduler::tests::)
+            ;;
+        cache)
+            label='Blocks to files · Write back buffered blocks'
+            features=learner-cache
+            test_args=(cache::tests::)
             ;;
         commit)
             label='Blocks to files · Publish a redo commit'
