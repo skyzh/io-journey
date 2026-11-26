@@ -9,7 +9,7 @@ page placements, then find the same records after each cut.
 
 ### Open a lab
 
-Run these commands after the [Linux setup](START.md#set-up-linux).
+Run these commands after [setting up the course](START.md#get-the-course).
 Use a full-history clone so Git and tar can prepare the sources from the
 pinned userspace baseline. If you cloned with `--depth`, run
 `git fetch --unshallow` first. The command prepares a separate working copy under `/var/tmp`. Build

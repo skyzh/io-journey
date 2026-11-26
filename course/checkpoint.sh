@@ -62,8 +62,9 @@ if [[ "$1" == prepare ]]; then
 fi
 
 lab_dir=$(cd -- "$2" && pwd -P)
+lab_parent=$(cd -- /var/tmp && pwd -P)
 case "$lab_dir" in
-    /var/tmp/io-journey-lab.*|/dev/shm/io-journey-lab.*) ;;
+    "$lab_parent"/io-journey-lab.*|/dev/shm/io-journey-lab.*) ;;
     *) usage ;;
 esac
 IFS= read -r chapter < "$lab_dir/.io-journey-checkpoint"
