@@ -90,6 +90,7 @@ jobs:
     needs: [book, cargo]
     concurrency:
       group: github-pages
+      queue: max
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
