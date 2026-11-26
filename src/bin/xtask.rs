@@ -17,6 +17,7 @@ Mounted labs (Linux root):
 
 Individual checks and development tools:
   cargo xtask learner <nand|stage>
+  cargo xtask host-schedule [learner]
   cargo xtask checkpoint prepare <ftl|queue|filesystem|log>
   cargo xtask checkpoint <previous|check|faults> <directory>
   cargo xtask ftl-collection
@@ -59,6 +60,20 @@ fn run(args: &[OsString]) -> io::Result<ExitCode> {
         // Preserve the former filtered reference invocation.
         Some("test") if options.len() == 1 => offline_cargo("test", &["--"], options),
         Some("learner") => run_helper("course/learner.sh", options, false),
+        Some("host-schedule") if options.is_empty() => {
+            offline_cargo("run", &["--quiet", "--bin", "host-schedule"], &[])
+        }
+        Some("host-schedule") if matches!(options, [mode] if mode == "learner") => offline_cargo(
+            "run",
+            &[
+                "--quiet",
+                "--bin",
+                "host-schedule",
+                "--features",
+                "learner-scheduler",
+            ],
+            &[],
+        ),
         Some("checkpoint") => run_helper("course/checkpoint.sh", options, false),
         Some("ftl-collection") if options.is_empty() => {
             run_helper("course/measure-collection.sh", options, false)

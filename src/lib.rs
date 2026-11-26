@@ -6,5 +6,6 @@ pub mod journal_fs;
 pub mod nand;
 pub mod queue;
 pub mod record;
+pub mod scheduler;
 
 pub type Trace = Vec<String>;

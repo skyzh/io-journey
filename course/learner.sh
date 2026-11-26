@@ -2,16 +2,16 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use cargo xtask learner {nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use cargo xtask learner {nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
 case "$1" in
     all)
-        stages=(nand map collect check admit order flush dispatch commit replay receipt completions ack)
+        stages=(nand map collect check admit order flush dispatch scheduler commit replay receipt completions ack)
         retry='cargo xtask test'
         ;;
-    nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|commit|replay|receipt|completions|ack)
+    nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|commit|replay|receipt|completions|ack)
         stages=("$1")
         retry="cargo xtask learner $1"
         ;;
@@ -74,6 +74,11 @@ run_stage() {
             label='Blocks in flight · Choose a Linux tag'
             features=learner-queue
             test_args=(dispatch::tests::)
+            ;;
+        scheduler)
+            label='Block scheduling · Dispatch without crossing dependencies'
+            features=learner-scheduler
+            test_args=(scheduler::tests::)
             ;;
         commit)
             label='Blocks to files · Publish a redo commit'

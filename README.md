@@ -26,6 +26,8 @@ The diagram also shows where physical storage and the planned NVMe lab fit.
   and test overwrite, collection, and recovery.
 - [Blocks in flight](course/02-queue.md) — Build a block queue and see how it
   handles competing requests.
+  [Host block scheduling](course/02a-scheduler.md) compares pass-through
+  and bounded read-first dispatch ahead of the device queue.
 - [Blocks to files](course/03-filesystem.md) — Build a small filesystem and
   see what it recovers after a crash.
 - [Efficient application I/O](course/04-append.md) — Build an append log and
