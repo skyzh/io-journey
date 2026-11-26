@@ -1,8 +1,8 @@
 # Set up your environment
 
-Run the reference demo and the focused checks for Chapters 1–3 on macOS
-or Linux. Use Linux for the mounted labs and the Chapter 4 engine
-checks that build the `io_uring` adapter.
+Run the reference demo and the focused learner checks on macOS or
+Linux. The mounted labs use the real Linux block and I/O interfaces
+and need a Linux guest or machine.
 
 ## Get the course
 
@@ -64,11 +64,6 @@ under `course/learner/`, and later chapters build on the modules
 you completed earlier. The demo and `cargo xtask test reference`
 use the supplied implementation.
 
-In Chapter 4, `cargo xtask learner receipt` also runs offline on
-either platform. Run the engine checks, `cargo xtask learner completions`
-and `cargo xtask learner ack`, in an ordinary Linux shell. Use that shell
-for the full `cargo xtask test` as well. Those commands build the Linux
-adapter and need registry or mirror access if its locked dependencies
-are missing from the cache.
-
-Next, start [NAND to SSD](01-ftl.md).
+In Chapter 4, the focused receipt, mock completion, and acknowledgment
+checks run offline on either platform. Run `cargo xtask test` after
+completing the exercises to run the full test sequence.

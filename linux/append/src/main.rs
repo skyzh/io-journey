@@ -1,11 +1,3 @@
-#[cfg_attr(
-    feature = "learner-append",
-    path = "../../../course/learner/append-commit.rs"
-)]
-#[cfg_attr(not(feature = "learner-append"), path = "commit/reference.rs")]
-mod commit;
-use commit::commit_group;
-
 mod engine;
 
 use std::env;
@@ -17,6 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use io_journey::record;
+use io_journey::ring::commit_group;
 
 use crate::engine::{Engine, Request, DEPTH};
 
@@ -174,79 +167,4 @@ fn verify(directory: &Path, expected: usize) -> io::Result<()> {
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::Cell;
-
-    #[test]
-    fn a_group_syncs_once_after_all_waves() {
-        let requests = requests(0, 3 * DEPTH).unwrap();
-        let write_calls = Cell::new(0);
-        let sync_calls = Cell::new(0);
-        let mut receipts = Vec::new();
-        commit_group(
-            &requests,
-            &mut |wave| {
-                assert_eq!(wave.len(), DEPTH);
-                assert_eq!(sync_calls.get(), 0);
-                write_calls.set(write_calls.get() + 1);
-                Ok(())
-            },
-            &mut || {
-                assert_eq!(write_calls.get(), 3);
-                sync_calls.set(sync_calls.get() + 1);
-                Ok(())
-            },
-            &mut receipts,
-        )
-        .unwrap();
-        assert_eq!(sync_calls.get(), 1);
-        assert_eq!(receipts.len(), requests.len());
-    }
-
-    #[test]
-    fn short_write_or_error_cannot_acknowledge_or_sync_the_failed_group() {
-        let requests = requests(0, 12).unwrap();
-        let mut receipts = Vec::new();
-        commit_group(
-            &requests[..4],
-            &mut |_| Ok(()),
-            &mut || Ok(()),
-            &mut receipts,
-        )
-        .unwrap();
-        for failure in [io::ErrorKind::WriteZero, io::ErrorKind::PermissionDenied] {
-            let result = commit_group(
-                &requests[4..],
-                &mut |wave| {
-                    if wave[0].id == 8 {
-                        Err(failure.into())
-                    } else {
-                        Ok(())
-                    }
-                },
-                &mut || panic!("failed wave reached sync"),
-                &mut receipts,
-            );
-            assert_eq!(result.unwrap_err().kind(), failure);
-            assert_eq!(receipts.len(), 4);
-        }
-    }
-
-    #[test]
-    fn sync_error_prevents_a_group_receipt() {
-        let requests = requests(0, 4).unwrap();
-        let mut receipts = Vec::new();
-        assert!(commit_group(
-            &requests,
-            &mut |_| Ok(()),
-            &mut || Err(io::Error::other("flush failed")),
-            &mut receipts
-        )
-        .is_err());
-        assert!(receipts.is_empty());
-    }
 }

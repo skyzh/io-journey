@@ -45,36 +45,44 @@ is an error. Run the check again to see both cases.
 
 ## Retire a bounded wave
 
-The [append adapter](https://github.com/skyzh/io-journey/blob/main/linux/append/src/engine.rs) supplies the Linux
-submission plumbing. Each wave has up to four writes at explicit file
-offsets. The adapter keeps an `Arc` owner for each submitted buffer as
-long as the kernel may still be using it.
+Run the supplied mock from the checkout on macOS or Linux:
 
-Once the receipt check passes, `cargo xtask learner completions` fetches the locked
-Linux `io-uring` dependencies into the Cargo cache and runs the completion tests. Open
+```sh
+cargo xtask mock-ring
+```
+
+The program submits two writes to different offsets. It fetches both
+requests in order, then completes request 2 before request 1. The
+result is `abcdef` because each write specifies its own offset.
+The submission and completion queues have separate bounds. A full
+submission queue applies backpressure to the caller. A full
+completion queue must be drained before the mock finishes more work.
+
+Run `cargo xtask learner completions` and open
 [`course/learner/append-completions.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/append-completions.rs).
+The tests check queue capacity and reach the missing completion
+validation and wave retirement.
+
 In `check_completions`, match each returned ID to its request exactly
-once and check its byte count. Completion order can vary. Reject
-unknown, duplicate, or missing IDs with `InvalidData`, and report a
-short write with `WriteZero`. Keep the first I/O failure for a complete
-set of IDs.
+once and check its byte count. Reject unknown, duplicate, or missing IDs
+with `InvalidData`. Report a short write with `WriteZero` and keep the
+first I/O failure for a complete set of IDs.
 
 In `drain_ring_wave`, call the supplied poll function until the wave
 has a completion for each request. A short write or failed operation
-can arrive while another buffer is still in use. Validate the full
-set first. Your code returns the operation result. The supplied adapter
-owns the buffer references and proves that the kernel returned one
-completion for every submitted ID before it releases them. A complete
-ID set retires even if a write returns `InvalidData`. A failed wait
-or an invalid ID set keeps the unproven buffers through process exit.
-Run the check again to exercise both kinds of failure.
+can arrive before the other writes finish. Collect the complete set
+before returning its result. Rerun the check and then see your code
+drive the mock with `cargo xtask mock-ring learner`.
+
+The [Linux append lab](linux-append.md) runs these same checks against
+completions from the real kernel engine.
 
 ## Acknowledge after sync
 
 When the completion checks pass, run `cargo xtask learner ack`. The group check reaches
 `implement group acknowledgement`. Open
 [`course/learner/append-commit.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/append-commit.rs) and write
-the group in chunks of `DEPTH`. Once all waves in the group succeed,
+the group in chunks of `super::DEPTH`. Once all waves in the group succeed,
 sync the file once. Add one receipt per record only after that sync
 succeeds. Each
 latency runs from the start of the group to that point.

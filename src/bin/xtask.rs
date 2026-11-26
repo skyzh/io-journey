@@ -6,7 +6,8 @@ const NAND_HELP: &str = "cargo xtask nand-latency [--read-us N] [--program-us N]
 const HELP: &str = "Run from the checkout. See course/START.md for macOS and Linux setup.
 
   cargo xtask demo
-  cargo xtask test                        (full sequence, including Linux io_uring)
+  cargo xtask mock-ring [learner]
+  cargo xtask test
   cargo xtask test reference [filter]
 
 Mounted labs (Linux root):
@@ -49,6 +50,20 @@ fn run(args: &[OsString]) -> io::Result<ExitCode> {
         Some("demo") if options.is_empty() => {
             offline_cargo("run", &["--quiet", "--bin", "io-journey"], options)
         }
+        Some("mock-ring") if options.is_empty() => {
+            offline_cargo("run", &["--quiet", "--bin", "mock-ring"], &[])
+        }
+        Some("mock-ring") if matches!(options, [mode] if mode == "learner") => offline_cargo(
+            "run",
+            &[
+                "--quiet",
+                "--bin",
+                "mock-ring",
+                "--features",
+                "learner-append",
+            ],
+            &[],
+        ),
         Some("test") if options.is_empty() => {
             run_helper("course/learner.sh", &["all".into()], false)
         }
