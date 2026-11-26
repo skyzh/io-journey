@@ -19,3 +19,8 @@ shared-pages = []
 learner-sharing = ["learner", "shared-pages"]
 
 [dependencies]
+
+[[bin]]
+name = "learner-demo"
+path = "src/bin/learner-demo.rs"
+required-features = ["learner-append"]

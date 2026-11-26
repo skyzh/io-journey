@@ -61,9 +61,18 @@ Each chapter gives you a command to rerun after each edit.
 
 Keep editing in this one checkout. The checks select learner code
 under `course/learner/`, and later chapters build on the modules
-you completed earlier. The demo and `cargo xtask test reference`
-use the supplied implementation.
+you completed earlier. `cargo xtask demo` and
+`cargo xtask test reference` use the supplied implementation.
 
 In Chapter 4, the focused receipt, mock completion, and acknowledgment
-checks run offline on either platform. Run `cargo xtask test` after
-completing the exercises to run the full test sequence.
+checks run offline on either platform. Run the completed stack after
+Chapter 4.
+
+```sh
+cargo xtask demo learner
+```
+
+The app checks aligned reads, writes, and mixed I/O. It sees three log
+records before a simulated cut and recovers the two it acknowledged
+after sync. `cargo xtask test` runs the full sequence of focused checks
+and finishes with the same recovery run.

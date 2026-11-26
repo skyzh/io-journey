@@ -5,7 +5,7 @@ use std::process::{Command, ExitCode, ExitStatus};
 const NAND_HELP: &str = "cargo xtask nand-latency [--read-us N] [--program-us N] [--erase-us N]";
 const HELP: &str = "Run from the checkout. See course/START.md for macOS and Linux setup.
 
-  cargo xtask demo
+  cargo xtask demo [learner]
   cargo xtask mock-ring [learner]
   cargo xtask test
   cargo xtask test reference [filter]
@@ -50,6 +50,7 @@ fn run(args: &[OsString]) -> io::Result<ExitCode> {
         Some("demo") if options.is_empty() => {
             offline_cargo("run", &["--quiet", "--bin", "io-journey"], options)
         }
+        Some("demo") if matches!(options, [mode] if mode == "learner") => learner_demo(),
         Some("mock-ring") if options.is_empty() => {
             offline_cargo("run", &["--quiet", "--bin", "mock-ring"], &[])
         }
@@ -65,7 +66,12 @@ fn run(args: &[OsString]) -> io::Result<ExitCode> {
             &[],
         ),
         Some("test") if options.is_empty() => {
-            run_helper("course/learner.sh", &["all".into()], false)
+            let status = run_helper("course/learner.sh", &["all".into()], false)?;
+            if status == ExitCode::SUCCESS {
+                learner_demo()
+            } else {
+                Ok(status)
+            }
         }
         Some("test")
             if options.len() <= 2 && options.first().is_some_and(|mode| mode == "reference") =>
@@ -175,6 +181,20 @@ fn offline_cargo(subcommand: &str, flags: &[&str], args: &[OsString]) -> io::Res
             .args(["--locked", "--offline"])
             .args(flags)
             .args(args),
+    )
+}
+
+fn learner_demo() -> io::Result<ExitCode> {
+    offline_cargo(
+        "run",
+        &[
+            "--quiet",
+            "--features",
+            "learner-append",
+            "--bin",
+            "learner-demo",
+        ],
+        &[],
     )
 }
 
