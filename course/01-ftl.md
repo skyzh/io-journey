@@ -220,10 +220,11 @@ mapping and relocation keep them safe.
 
 ## What a flush saves
 
-A real SSD works from a copy of its mapping held in RAM. RAM is lost at
-power-off, so the drive also writes enough to flash to rebuild the mapping
-after a sudden power loss. For one real design, see
-[how SPDK's software FTL recovers after a dirty shutdown](https://spdk.io/doc/ftl.html#ftl_dirty_shutdown).
+An SSD keeps all or part of its mapping in RAM while it runs. RAM is lost
+at power-off, so the drive also writes enough metadata to persistent media
+to rebuild the mapping after a sudden power loss. SPDK's software FTL, for
+example, [pages mapping entries in and out of a RAM cache](https://spdk.io/doc/ftl.html#ftl_l2p)
+and [rebuilds the map from persistent metadata after a dirty shutdown](https://spdk.io/doc/ftl.html#ftl_dirty_shutdown).
 
 This course's model takes a shortcut. A flush saves a copy of the NAND
 pages and the mapping together, in RAM, as one step. A simulated power cut
