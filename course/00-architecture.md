@@ -4,24 +4,14 @@ When an application appends to a file and calls sync, its bytes pass
 through several layers before they rest on flash. In this course you build
 that stack in Rust, starting with a simulated NAND chip:
 
-<ol class="write-path" aria-label="One append through the storage stack">
-  <li><strong>Application</strong><span>Write the record bytes at the end of the log, then sync the file</span></li>
-  <li><strong>Filesystem</strong><span>Translate the byte offset into a logical block and update the file length</span></li>
-  <li><strong>Block queue</strong><span>Send 4 KiB block requests, then flush the earlier writes</span></li>
-  <li><strong>Flash translation layer</strong><span>Map each updated block to a fresh page</span></li>
-  <li><strong>Simulated NAND</strong><span>Program pages and erase whole blocks</span></li>
-</ol>
+![In the portable capstone, appends pass through a mock I/O ring and join random I/O at the userspace write-back cache. The cache sits above the journaled filesystem and host scheduler. The device queue, flash translation layer, and simulated NAND are also used in the optional Linux labs through ublk.][storage-stack]
 
-Each layer talks to the one below it in a smaller vocabulary. The
-application knows files and bytes. The filesystem turns them into numbered
-4 KiB logical blocks, each identified by a logical block address (LBA). The
-queue decides which block request runs next. The flash translation layer
-(FTL) decides which NAND page holds each LBA. The NAND model stores pages
-and enforces the rules real flash has.
+[storage-stack]: book/assets/storage-stack.svg
 
-The rest of this page follows one append through those layers. You don't
-need to understand every step yet. Each chapter returns to its own layer
-in detail.
+The diagram shows the stack you run after Chapter 4. The shorter
+reference demo below uses a simple filesystem and follows one append
+from a file byte offset to numbered 4 KiB logical blocks, then through
+the device queue and flash translation layer (FTL) to NAND pages.
 
 ## Follow one append
 
