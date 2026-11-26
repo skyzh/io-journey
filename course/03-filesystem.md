@@ -32,8 +32,9 @@ cargo xtask learner cache
 ```
 
 Open [`course/learner/cache.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/cache.rs).
-The supplied code handles hits and inserts. Your two functions move
-dirty blocks out of the cache:
+The supplied code handles hits and inserts. Your two functions both write
+dirty blocks back to the backing disk. Eviction then removes the entry from
+the cache, while flush keeps it there, now clean:
 
 1. In `evict_oldest`, inspect the front entry. If dirty, write a copy
    of its block to the backing disk before removing the entry. A
