@@ -6,9 +6,55 @@ The [reference demo](START.md#run-the-reference-demo) uses a deliberately
 small [fixed-extent filesystem](https://github.com/skyzh/io-journey/blob/main/src/filesystem.rs):
 one file, whose length lives in LBA 0. Writing the data and then the length
 is enough for one append, but not for renaming, replacing or deleting
-files. This chapter builds the filesystem the mounted labs use. It has
+files. This chapter starts with a write-back cache, then builds the
+filesystem that the final run and the Linux labs use. That filesystem has
 names, inodes and allocatable blocks, and a journal that makes each new
 version of the directory recoverable after a power cut.
+
+## Buffer writes in a userspace cache
+
+An application often keeps recently written blocks in its own memory and
+writes them out later. That's a write-back cache. In the final run of the
+course, this cache sits above the filesystem: it buffers a file's blocks
+and writes them to the journaled filesystem you build next. This exercise
+puts the cache over a simulated block device instead, so you can finish it
+before the journal exists. The rules are the same either way.
+
+A write-back cache can make a write visible to reads before it reaches
+backing storage. In this exercise the cache holds a fixed number of
+4 KiB blocks. Each entry has an LBA, its bytes, and a dirty bit. Reads
+prefer the cached value. Writes update it and mark it dirty.
+
+Run the check from your macOS or Linux checkout:
+
+```sh
+cargo xtask learner cache
+```
+
+Open [`course/learner/cache.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/cache.rs).
+The supplied code handles hits and inserts. Your two functions move
+dirty blocks out of the cache:
+
+1. In `evict_oldest`, inspect the front entry. If dirty, write a copy
+   of its block to the backing disk before removing the entry. A
+   clean entry needs no write. If the write fails, leave the entry in
+   place and return the error.
+2. In `flush_dirty`, write every dirty entry, then flush the backing
+   disk. Flush even when every entry is clean. Earlier evictions may
+   already have sent writes to the backing disk without flushing it.
+   Clear the dirty flags only after the backing flush succeeds.
+
+Rerun the check. The first case reads the dirty bytes before sync, cuts
+power before sync, and then repeats with a successful sync. The second
+case fills the cache and proves that an eviction issues a write while
+the backing device may still hold that write in its own volatile cache.
+The third case checks that an eviction failure leaves the dirty bytes
+readable and that a failed flush keeps the entries dirty for a retry.
+
+The userspace cache decides when to send blocks to the device. The
+device’s flush establishes the simulator’s recovery boundary. Next the
+journal decides which file and directory changes to publish at that
+boundary.
 
 ## How the journal works
 
@@ -57,44 +103,6 @@ than the marker describes, reopen reports corruption instead of guessing.
 `sync_file` commits one file's new data and length under the name it
 already has on disk. `sync_dir` commits the whole directory, so it is the
 call that makes a create, rename or delete durable.
-
-## Buffer writes in a userspace cache
-
-A write-back cache can make a write visible to reads before it reaches
-backing storage. In this exercise the cache holds a fixed number of
-4 KiB blocks. Each entry has an LBA, its bytes, and a dirty bit. Reads
-prefer the cached value. Writes update it and mark it dirty.
-
-Run the check from your macOS or Linux checkout:
-
-```sh
-cargo xtask learner cache
-```
-
-Open [`course/learner/cache.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/cache.rs).
-The supplied code handles hits and inserts. Your two functions move
-dirty blocks out of the cache:
-
-1. In `evict_oldest`, inspect the front entry. If dirty, write a copy
-   of its block to the backing disk before removing the entry. A
-   clean entry needs no write. If the write fails, leave the entry in
-   place and return the error.
-2. In `flush_dirty`, write every dirty entry, then flush the backing
-   disk. Flush even when every entry is clean. Earlier evictions may
-   already have sent writes to the backing disk without flushing it.
-   Clear the dirty flags only after the backing flush succeeds.
-
-Rerun the check. The first case reads the dirty bytes before sync, cuts
-power before sync, and then repeats with a successful sync. The second
-case fills the cache and proves that an eviction issues a write while
-the backing device may still hold that write in its own volatile cache.
-The third case checks that an eviction failure leaves the dirty bytes
-readable and that a failed flush keeps the entries dirty for a retry.
-
-The userspace cache decides when to send blocks to the device. The
-device’s flush establishes the simulator’s recovery boundary. Next the
-journal decides which file and directory changes to publish at that
-boundary.
 
 ## Make the redo commit recoverable
 

@@ -9,7 +9,7 @@ root shell. The main course doesn't depend on it.
 ## Compare and recover
 
 Follow the [guest prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/append/README.md). Run from the
-checkout in the [root guest shell](START.md#mounted-labs).
+checkout in the [root Linux shell](START.md#mounted-labs).
 
 ```sh
 cargo xtask append learner
