@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf '%s\n' 'Use cargo xtask learner {nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|cache|commit|replay|receipt|completions|ack}.' >&2
+    printf '%s\n' 'Use cargo xtask learner {nand|map|collect|check|admit|order|flush|dispatch|scheduler|cache|commit|replay|receipt|completions|ack}.' >&2
     exit 2
 }
 (( $# == 1 )) || usage
@@ -11,7 +11,7 @@ case "$1" in
         stages=(nand map collect check admit order flush dispatch scheduler cache commit replay receipt completions ack)
         retry='cargo xtask test'
         ;;
-    nand|previous|map|collect|check|index|sharing|admit|order|flush|dispatch|scheduler|cache|commit|replay|receipt|completions|ack)
+    nand|map|collect|check|admit|order|flush|dispatch|scheduler|cache|commit|replay|receipt|completions|ack)
         stages=("$1")
         retry="cargo xtask learner $1"
         ;;
@@ -29,11 +29,6 @@ run_stage() {
             features=learner-nand
             test_args=(nand::tests::)
             ;;
-        previous)
-            features=
-            label='Supplied NAND programming and erasure'
-            test_args=(nand::tests::programming_requires_an_erased_page_and_erase_clears_the_whole_block -- --exact)
-            ;;
         map)
             label='NAND to SSD · Publish the mapping'
             test_args=(ftl::tests::successful_programs_publish_the_new_mapping -- --exact)
@@ -45,15 +40,6 @@ run_stage() {
         check)
             label='NAND to SSD · FTL and recovery'
             test_args=(ftl::tests::)
-            ;;
-        index)
-            label='FTL free-space index'
-            features=learner-index
-            test_args=(ftl::tests::index_matches_physical_pages_and_mappings_through_recovery -- --exact)
-            ;;
-        sharing)
-            label='Shared checkpoint pages'
-            features=learner-sharing
             ;;
         admit)
             label='Blocks in flight · Admit requests'
@@ -71,7 +57,7 @@ run_stage() {
             test_args=(queue::tests::)
             ;;
         dispatch)
-            label='Blocks in flight · Choose a Linux tag'
+            label='Blocks in flight · Choose a device request'
             features=learner-queue
             test_args=(dispatch::tests::)
             ;;

@@ -47,6 +47,9 @@ under `course/learner/`, and later chapters build on the modules
 you completed earlier. `cargo xtask demo` and
 `cargo xtask test reference` use the supplied implementation.
 
+If you used the old per-chapter checkpoint command, switch to
+the focused `cargo xtask learner` checks from this checkout.
+
 In Chapter 4, the focused receipt, mock completion, and acknowledgment
 checks run offline on either platform. Run the completed stack after
 Chapter 4.

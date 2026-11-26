@@ -84,7 +84,7 @@ impl Ftl {
                 "logical capacity must leave an erase block and one extra physical page",
             ));
         }
-        let map = Mapping::new(logical_blocks, geometry)?;
+        let map = Mapping::new(logical_blocks)?;
         Ok(Self::from_image(FlashImage {
             nand: Nand::new(geometry)?,
             map,
@@ -223,7 +223,7 @@ impl FlashImage {
         for erase_block in 0..geometry.erase_blocks() {
             let pages = geometry.erase_block_pages(erase_block);
             let used = self.nand.programmed_in(erase_block);
-            let mapped = self.map.live_in(erase_block, &pages);
+            let mapped = self.map.live_in(&pages);
             let stale = used - mapped;
             let free_outside = free - (geometry.pages_per_erase_block() - used);
             if stale > most_stale && mapped <= free_outside {
@@ -356,73 +356,6 @@ mod tests {
         )));
     }
 
-    #[cfg(feature = "indexed-ftl")]
-    #[test]
-    fn index_matches_physical_pages_and_mappings_through_recovery() {
-        fn check(image: &FlashImage) {
-            let geometry = image.nand.geometry();
-            let erased = (0..geometry.physical_pages())
-                .filter(|&page| image.nand.read(page).is_none())
-                .collect::<Vec<_>>();
-            assert_eq!(image.nand.free_count(), erased.len(), "erased page count");
-            assert!(
-                image.nand.erased_pages().eq(erased),
-                "erased page addresses"
-            );
-            for block in 0..geometry.erase_blocks() {
-                let pages = geometry.erase_block_pages(block);
-                let used = pages
-                    .clone()
-                    .filter(|&page| image.nand.read(page).is_some())
-                    .count();
-                let live = (0..image.map.len())
-                    .filter_map(|lba| image.mapped_page(lba))
-                    .filter(|page| pages.contains(page))
-                    .count();
-                assert_eq!(
-                    image.nand.programmed_in(block),
-                    used,
-                    "occupied pages in block {block}"
-                );
-                assert_eq!(
-                    image.map.live_in(block, &pages),
-                    live,
-                    "live pages in block {block}"
-                );
-            }
-        }
-
-        let mut ftl = Ftl::new();
-        let mut trace = Vec::new();
-        check(&ftl.live);
-        for lba in (0..8).chain([0, 0, 0, 0, 1]) {
-            ftl.write(lba, Box::new([lba as u8; BLOCK_BYTES]), &mut trace)
-                .unwrap();
-            check(&ftl.live);
-            check(&ftl.durable);
-        }
-        assert!(trace
-            .iter()
-            .any(|event| event.starts_with("nand   erase block ")));
-        ftl.flush(&mut trace);
-        let saved = ftl.checkpoint();
-        check(&saved);
-        ftl.arm_torn_write(1, 19).unwrap();
-        let error = ftl
-            .write(1, Box::new([0x73; BLOCK_BYTES]), &mut trace)
-            .unwrap_err();
-        assert!(error.get_ref().unwrap().is::<TornProgram>());
-        check(&ftl.live);
-        check(&ftl.durable);
-        check(&saved);
-        let mut recovered = Ftl::open(ftl.power_cut(), &mut trace).unwrap();
-        check(&recovered.live);
-        recovered
-            .write(1, Box::new([0x42; BLOCK_BYTES]), &mut trace)
-            .unwrap();
-        check(&recovered.live);
-    }
-
     #[test]
     fn collection_copies_live_pages_before_erasing_and_recovery_keeps_them() {
         let mut trace = Vec::new();
@@ -526,27 +459,6 @@ mod tests {
                 [byte; BLOCK_BYTES]
             );
         }
-    }
-
-    #[cfg(feature = "shared-pages")]
-    #[test]
-    fn clean_exports_share_existing_page_payloads() {
-        let mut trace = Vec::new();
-        let mut ftl = Ftl::new();
-        ftl.write(0, Box::new([0x12; BLOCK_BYTES]), &mut trace)
-            .unwrap();
-        ftl.flush(&mut trace);
-        let before = ftl.checkpoint();
-        ftl.flush(&mut trace);
-        let after = ftl.checkpoint();
-        let page = before.mapped_page(0).unwrap();
-        assert!(
-            std::ptr::eq(
-                before.physical_page(page).unwrap(),
-                after.physical_page(page).unwrap()
-            ),
-            "clean exports should share the same stored payload"
-        );
     }
 
     #[test]

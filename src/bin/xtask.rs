@@ -19,10 +19,6 @@ Mounted labs (Linux root):
 Individual checks and development tools:
   cargo xtask learner <nand|stage>
   cargo xtask host-schedule [learner]
-  cargo xtask checkpoint prepare <ftl|queue|filesystem|log>
-  cargo xtask checkpoint <previous|check|faults> <directory>
-  cargo xtask ftl-collection
-  cargo xtask ftl-snapshots <timing|heap>
   cargo xtask nand-latency [--read-us N] [--program-us N] [--erase-us N]";
 
 fn main() -> ExitCode {
@@ -95,11 +91,6 @@ fn run(args: &[OsString]) -> io::Result<ExitCode> {
             ],
             &[],
         ),
-        Some("checkpoint") => run_helper("course/checkpoint.sh", options, false),
-        Some("ftl-collection") if options.is_empty() => {
-            run_helper("course/measure-collection.sh", options, false)
-        }
-        Some("ftl-snapshots") => run_helper("course/measure-snapshots.sh", options, false),
         Some("ext4") if reference_or_learner(options) => {
             run_helper("linux/ublk/smoke.sh", options, true)
         }
