@@ -45,7 +45,8 @@ reopens, it reads `COMMIT` first and chooses a version:
 | --- | --- | --- |
 | Before step 3's flush | All zeros | The old one, from `HOME`. The new data blocks are unreferenced and become free again. |
 | After step 3, before step 4 | Valid marker | The new one, from `REDO`, which reopen then installs into `HOME` |
-| During step 4 | Still valid | The new one again. Installing it twice gives the same result. |
+| During step 4, before the cleared marker is flushed | Still valid | The new one again. Installing it twice gives the same result. |
+| After step 4's last flush | All zeros | The new one, now in `HOME` |
 
 The marker's checksum and generation make sure reopen never trusts the
 wrong `REDO` block. If `REDO` was damaged, or holds a different version

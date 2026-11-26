@@ -16,9 +16,9 @@ acknowledges a record only after the sync that covers it returns.
 Syncing after every record is safe but slow, because each sync waits for
 a device flush. Group commit writes several records, syncs once, then
 acknowledges all of them together. Larger groups need fewer syncs per
-record, so throughput goes up. Each record also waits longer for its
-group's sync, so acknowledgement latency goes up. The lab at the end
-measures that trade-off.
+record, so throughput should rise. Each record may also wait longer for
+its group's sync, so acknowledgement latency can rise too. The lab at the
+end measures whether it does.
 
 The engine records what it acknowledged as a receipt: the number of bytes
 at the front of the file that are durable. After a power cut, those bytes
@@ -110,7 +110,8 @@ For performance, compare the `Records/s` and `Ack p50 µs` columns in the
 report:
 
 - **Group size.** Within one filesystem and engine, compare groups of 4
-  and 32. Expect higher throughput and usually higher latency at 32.
+  and 32. Check whether throughput rises at 32 and whether p50 latency
+  rises with it. Latency doesn't always move the same way in every run.
 - **Engine.** Within one filesystem and group size, compare `sync` with
   `uring` (io_uring). The lab runs each engine twice per case. The
   difference is small and can change sign between the two runs, so compare
@@ -137,6 +138,7 @@ offset *n* × 512. The last acknowledged record, ID 319, starts at offset
 You can't follow one record to one kernel tag or one NAND page. The
 filesystem decides where its blocks go, writes back in the background, and
 the kernel can split or merge requests. The link you can check end to end
-is the flush boundary: the receipt was taken before that flush, and
-recovery from its checkpoint returned every acknowledged byte. To see
+is the flush boundary. That flush finished before the application's sync
+returned, and only then did the engine acknowledge the records. Recovery
+from its checkpoint returned every acknowledged byte. To see
 individual NAND programs and mapping updates, use the demo trace instead.
