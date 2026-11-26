@@ -18,23 +18,7 @@ case "$1" in
     *) usage ;;
 esac
 
-if ! command -v findmnt >/dev/null; then
-    printf '%s\n' 'Install findmnt from util-linux in the Linux guest and retry from the checkout.' >&2
-    exit 1
-fi
-if ! mount=$(findmnt -n -o FSTYPE,OPTIONS -T /dev/shm) ||
-   ! read -r fstype options <<< "$mount" ||
-   [[ $fstype != tmpfs || -z $options || ,$options, == *,noexec,* ]]; then
-    printf '%s\n' '/dev/shm must be executable tmpfs. Use the Linux setup in course/START.md.' >&2
-    exit 1
-fi
-
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-scratch=$(mktemp -d /dev/shm/io-journey-learner.XXXXXX)
-trap 'rm -rf -- "$scratch"' EXIT
-mkdir "$scratch/tmp"
-export CARGO_HOME="$scratch/cargo" CARGO_TARGET_DIR="$scratch/target"
-export TMPDIR="$scratch/tmp" CARGO_INCREMENTAL=0
 
 run_stage() {
     local stage=$1 features=learner manifest=Cargo.toml label

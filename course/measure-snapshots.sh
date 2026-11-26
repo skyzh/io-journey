@@ -5,12 +5,8 @@ set -euo pipefail
     printf '%s\n' 'Use cargo xtask ftl-snapshots timing or heap.' >&2
     exit 2
 }
-if [[ $(findmnt -n -o FSTYPE -T /dev/shm) != tmpfs ]]; then
-    printf '%s\n' '/dev/shm must be tmpfs.' >&2
-    exit 1
-fi
 course_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-scratch=$(mktemp -d /dev/shm/io-journey-snapshots.XXXXXX)
+scratch=$(mktemp -d /var/tmp/io-journey-snapshots.XXXXXX)
 trap 'rm -rf -- "$scratch"' EXIT
 export TMPDIR="$scratch"
 flags=(--edition=2021 -C opt-level=3 -C embed-bitcode=no -C codegen-units=16 -A dead_code)

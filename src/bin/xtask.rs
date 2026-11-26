@@ -1,7 +1,5 @@
 use std::ffi::OsString;
-use std::fs;
 use std::io;
-use std::path::PathBuf;
 use std::process::{Command, ExitCode, ExitStatus};
 
 const NAND_HELP: &str = "cargo xtask nand-latency [--read-us N] [--program-us N] [--erase-us N]";
@@ -140,67 +138,13 @@ fn signal_code(_: ExitStatus) -> u8 {
     1
 }
 
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn create() -> io::Result<Self> {
-        let mount = Command::new("findmnt")
-            .args(["-n", "-o", "FSTYPE,OPTIONS", "-T", "/dev/shm"])
-            .output()?;
-        let mount_output = String::from_utf8_lossy(&mount.stdout);
-        let mut fields = mount_output.split_whitespace();
-        if !mount.status.success()
-            || fields.next() != Some("tmpfs")
-            || !fields
-                .next()
-                .is_some_and(|options| !options.split(',').any(|flag| flag == "noexec"))
-        {
-            return Err(io::Error::other("/dev/shm must be executable tmpfs"));
-        }
-
-        let created = Command::new("mktemp")
-            .args(["-d", "/dev/shm/io-journey-xtask.XXXXXX"])
-            .output()?;
-        if !created.status.success() {
-            return Err(io::Error::other(
-                "could not create Cargo scratch on /dev/shm",
-            ));
-        }
-        let output = String::from_utf8(created.stdout).map_err(io::Error::other)?;
-        let path = output.trim_end_matches('\n');
-        let suffix = path.strip_prefix("/dev/shm/io-journey-xtask.");
-        if !suffix.is_some_and(|name| {
-            name.len() == 6 && name.bytes().all(|byte| byte.is_ascii_alphanumeric())
-        }) {
-            return Err(io::Error::other(
-                "mktemp returned an unexpected Cargo scratch path",
-            ));
-        }
-        Ok(Self(PathBuf::from(path)))
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
 fn offline_cargo(subcommand: &str, flags: &[&str], args: &[OsString]) -> io::Result<ExitCode> {
-    require_linux()?;
-    let scratch = Scratch::create()?;
-    let tmp = scratch.0.join("tmp");
-    fs::create_dir(&tmp)?;
     child_status(
         Command::new("cargo")
             .arg(subcommand)
             .args(["--locked", "--offline"])
             .args(flags)
-            .args(args)
-            .env("CARGO_HOME", scratch.0.join("cargo"))
-            .env("CARGO_TARGET_DIR", scratch.0.join("target"))
-            .env("TMPDIR", tmp)
-            .env("CARGO_INCREMENTAL", "0"),
+            .args(args),
     )
 }
 

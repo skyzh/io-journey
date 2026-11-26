@@ -150,7 +150,7 @@ are ready.
 
 [View the I/O Journey repository](https://github.com/skyzh/io-journey)
 
-[Start the course from the beginning](START.md)
+[Start the course from the beginning](00-architecture.md)
 
 </div>
 

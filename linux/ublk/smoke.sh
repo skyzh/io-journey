@@ -11,10 +11,7 @@ fail() {
 
 [[ $(id -u) == 0 && -c /dev/ublk-control ]] || fail 'Run as root in a guest with ublk.'
 require_private_mount_namespace
-for ram_dir in /dev/shm /run; do
-    [[ $(findmnt -n -o FSTYPE -T "$ram_dir") == tmpfs ]] || fail "$ram_dir must be tmpfs."
-done
-require_private_mount_parent /dev/shm
+[[ $(findmnt -n -o FSTYPE -T /run) == tmpfs ]] || fail '/run must be tmpfs for ublk metadata.'
 
 mode=ext4
 mount_filesystem=ext4
@@ -39,8 +36,7 @@ if (( $# != 0 )); then
             [[ $# == 2 || ( $# == 3 && "$3" == learner ) ]] || fail 'Use linux/fuse/smoke.sh for the FUSE lab.'
             if (( $# == 3 )); then build_args=(--features learner-queue); fi
             fuse_binary=$(realpath -- "$2")
-            [[ -x "$fuse_binary" && $(findmnt -n -o FSTYPE -T "$fuse_binary") == tmpfs ]] ||
-                fail 'Use a FUSE binary from guest tmpfs.'
+            [[ -x "$fuse_binary" ]] || fail 'Expected executable at '"$fuse_binary"
             mount_filesystem=fuse
             ;;
         append-case)
@@ -57,7 +53,12 @@ if (( $# != 0 )); then
     esac
 fi
 
-run_dir=$(mktemp -d /dev/shm/io-journey-ublk.XXXXXX)
+run_parent=/var/tmp
+if [[ "$mode" == queue-case || "$mode" == append-case ]]; then
+    run_parent=/dev/shm
+fi
+require_private_mount_parent "$run_parent"
+run_dir=$(mktemp -d "$run_parent/io-journey-ublk.XXXXXX")
 mount_dir="$run_dir/mount"
 mount_name="${run_dir##*/}"
 socket="$run_dir/control.sock"
@@ -77,8 +78,7 @@ if [[ "$mount_filesystem" == fuse ]]; then
 fi
 if [[ "$mode" == queue-case || "$mode" == append-case ]]; then
     binary=$(realpath "${IO_JOURNEY_ADAPTER_BIN:?}")
-    [[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
-        fail 'Use an adapter binary from guest tmpfs.'
+    [[ -x "$binary" ]] || fail 'Expected executable at '"$binary"
 fi
 if [[ "$mode" == queue-case ]]; then
     profile_args=("$2" "$5/server.tsv")

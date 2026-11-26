@@ -26,8 +26,7 @@ backend="/dev/ublkb$device_id"
 [[ -d "$output" && $(findmnt -n -o FSTYPE -T "$output") == tmpfs ]] ||
     fail 'Keep the measurements on guest tmpfs.'
 append=$(realpath -- "${IO_JOURNEY_APPEND_BIN:?}")
-[[ -x "$append" && $(findmnt -n -o FSTYPE -T "$append") == tmpfs ]] ||
-    fail 'Use an append binary from guest tmpfs.'
+[[ -x "$append" ]] || fail 'Expected executable at '"$append"
 
 run_dir=$(mktemp -d /dev/shm/io-journey-append-case.XXXXXX)
 fuse_pid=
@@ -50,8 +49,7 @@ cleanup_mount() {
 
 if [[ "$filesystem" == fuse ]]; then
     binary=$(realpath -- "${IO_JOURNEY_FUSE_BIN:?}")
-    [[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
-        fail 'Use a FUSE binary from guest tmpfs.'
+    [[ -x "$binary" ]] || fail 'Expected executable at '"$binary"
     source "$case_dir/../fuse/mount.sh"
 elif [[ "$filesystem" != ext4 ]]; then
     fail 'Expected ext4 or fuse.'

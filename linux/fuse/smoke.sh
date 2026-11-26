@@ -13,15 +13,13 @@ if [[ $# -gt 2 || ( "$backend" != image && "$backend" != ublk ) ||
     printf 'Use smoke.sh {image|ublk} [learner].\n' >&2
     exit 1
 fi
-if [[ $(id -u) != 0 || ! -c /dev/fuse ||
-      $(findmnt -n -o FSTYPE -T /dev/shm) != tmpfs ]]; then
-    printf 'Use guest root with /dev/fuse, /dev/shm on tmpfs, and a private mount namespace.\n' >&2
+if [[ $(id -u) != 0 || ! -c /dev/fuse ]]; then
+    printf 'Use guest root with /dev/fuse, and a private mount namespace.\n' >&2
     exit 1
 fi
 require_private_mount_namespace
-require_private_mount_parent /dev/shm
 
-build_dir=$(mktemp -d /dev/shm/io-journey-fuse-build.XXXXXX)
+build_dir=$(mktemp -d /var/tmp/io-journey-fuse-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT
 mkdir "$build_dir/tmp"
 env CARGO_HOME="$build_dir/cargo" CARGO_TARGET_DIR="$build_dir/target" \

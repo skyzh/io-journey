@@ -2,8 +2,7 @@
 set -euo pipefail
 
 adapter_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-[[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]]
-scratch=$(mktemp -d /dev/shm/io-journey-build-env-test.XXXXXX)
+scratch=$(mktemp -d /var/tmp/io-journey-build-env-test.XXXXXX)
 trap 'rm -rf -- "$scratch"' EXIT
 source "$adapter_dir/build-env.sh"
 

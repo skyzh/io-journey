@@ -1,8 +1,8 @@
 # Summary
 
-[Start here](START.md)
-
 [Overview](00-architecture.md)
+
+[Set up your environment](START.md)
 
 - [NAND to SSD](01-ftl.md)
 - [Blocks in flight](02-queue.md)

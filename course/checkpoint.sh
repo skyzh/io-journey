@@ -42,11 +42,6 @@ retry_check() {
 }
 
 [[ $# -eq 2 ]] || usage
-if [[ "$(findmnt -n -o FSTYPE -T /dev/shm)" != tmpfs ]]; then
-    printf '%s\n' 'Run the checkpoint commands on Linux with /dev/shm mounted as tmpfs.' >&2
-    exit 1
-fi
-
 if [[ "$1" == prepare ]]; then
     chapter=$2
     choose_tests "$chapter"
@@ -55,7 +50,7 @@ if [[ "$1" == prepare ]]; then
             'Use a full-history clone. In a shallow clone, run git fetch --unshallow and then retry.' >&2
         exit 1
     fi
-    lab_dir=$(mktemp -d /dev/shm/io-journey-lab.XXXXXX)
+    lab_dir=$(mktemp -d /var/tmp/io-journey-lab.XXXXXX)
     trap "rm -rf -- \"$lab_dir\"" EXIT
     git -C "$repo_dir" archive "$baseline" Cargo.toml Cargo.lock src | tar -x -C "$lab_dir"
     cd -- "$lab_dir"
@@ -68,17 +63,12 @@ fi
 
 lab_dir=$(cd -- "$2" && pwd -P)
 case "$lab_dir" in
-    /dev/shm/io-journey-lab.*) ;;
+    /var/tmp/io-journey-lab.*|/dev/shm/io-journey-lab.*) ;;
     *) usage ;;
 esac
 IFS= read -r chapter < "$lab_dir/.io-journey-checkpoint"
 choose_tests "$chapter"
 
-mkdir -p "$lab_dir/.scratch/tmp"
-export CARGO_HOME="$lab_dir/.scratch/cargo"
-export CARGO_TARGET_DIR="$lab_dir/.scratch/target"
-export TMPDIR="$lab_dir/.scratch/tmp"
-export CARGO_INCREMENTAL=0
 cd -- "$lab_dir"
 
 case "$1" in

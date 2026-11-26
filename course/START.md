@@ -1,44 +1,44 @@
-# Start here
+# Set up your environment
 
-You will implement a storage stack in Rust and follow an acknowledged
-append down to NAND. Start by running the complete stack. In the first
-chapter you will replace two FTL operations, check their recovery rules,
-and run that code on an ext4 mount.
+You can run the reference demo on macOS or Linux with Rust and Cargo.
+The full learner test sequence uses a Linux shell and later compiles an
+adapter for Linux's `io_uring` interface. The mounted labs also use
+Linux kernel features to expose and mount the storage stack you build.
 
 ## Set up Linux
 
-Use a Linux checkout with a Rust toolchain, Cargo, Bash, `mktemp`, and
-`findmnt` from util-linux. On a Mac with an OrbStack machine named `ubuntu`, open
-a guest shell from the course checkout with `orb -m ubuntu`.
+Use a Linux machine, a remote Linux server, or a Linux VM. On macOS,
+use any VM that supports the kernel features needed by the labs you
+want to run. OrbStack is one environment the author tested.
 
-From the checkout inside Linux, check the toolchain and RAM filesystem.
+Open a Linux shell. You’ll need Git, Rust, Cargo, and Bash.
 
 ```sh
 rustc --version
 cargo --version
-findmnt -n -o FSTYPE,OPTIONS -T /dev/shm
+bash --version
 ```
 
-Once the filesystem command reports `tmpfs` without `noexec`, prepare a
-private Cargo directory for this guest shell. This also keeps the command
-runner's build in RAM.
+Clone the course and enter the checkout. If you already cloned it, open
+that checkout instead.
 
 ```sh
-io_journey_cargo=$(mktemp -d /dev/shm/io-journey-cargo.XXXXXX) &&
-  export CARGO_HOME="$io_journey_cargo/home" CARGO_TARGET_DIR="$io_journey_cargo/target" TMPDIR="$io_journey_cargo"
+git clone https://github.com/skyzh/io-journey.git
+cd io-journey
 ```
 
-Run the demo and `cargo xtask test` as an ordinary user. The append
-chapter needs Cargo registry access to fetch its locked Linux `io-uring`
-dependencies into tmpfs. The earlier chapters use the standard library.
-The course was checked on OrbStack Ubuntu 26.04.1 arm64 with Rust 1.93.1.
+Run the demo and learner tests as an ordinary user. Cargo uses its
+normal cache and build directories. The append chapter needs Cargo
+registry access to fetch its locked Linux dependencies. The earlier
+chapters use the standard library.
 
 ### Mounted labs
 
-Run these from the checkout in a root Linux shell. On a Mac, open it with
-`orb -m ubuntu -u root` from the checkout. Repeat the tmpfs setup above
-in that shell. Each mounted Cargo command uses a private mount namespace.
-The lab pages list their kernel and tool prerequisites.
+When a chapter calls for a mounted lab, open a root shell on Linux
+and run the command from the checkout. Each mounted command uses a
+private mount namespace. The lab instructions list the required kernel
+devices and tools. The queue and append benchmarks keep their captures
+in `/dev/shm` to avoid writing measurement output to disk during a run.
 
 ## Run the reference demo
 
@@ -51,22 +51,15 @@ the two records that survive the cuts.
 
 ## Test your own implementation
 
-From the course checkout, use the same command after each edit.
+Start with [Chapter 1’s focused checks](01-ftl.md#run-the-check).
+The supplied NAND check passes. The first mapping check shows the
+behavior you will implement. Each chapter gives you a command to
+rerun after each edit.
 
-```sh
-cargo xtask test
-```
+Keep editing in this one checkout. The checks select learner code
+under `course/learner/`, and later chapters build on the modules
+you completed earlier. In the final chapter, run `cargo xtask test`
+to check all four layers together. The demo and
+`cargo xtask test reference` use the supplied implementation.
 
-The command checks the supplied NAND first, then tests the exercises in
-chapter order. It stops at the first failing check and names the step
-to work on next. When that step passes, the command can reach the next
-exercise, which may still fail until you implement it.
-
-The command sets Cargo features to compile your files under
-`course/learner/`. Later features keep your earlier modules active, so
-the queue builds on your FTL and the journal and append chapters keep
-using your earlier work. Keep editing in this one checkout through the
-four chapters. The demo and `cargo xtask test reference` use the supplied
-implementation.
-
-Next, [follow one write through the stack](00-architecture.md).
+Next, start [NAND to SSD](01-ftl.md).

@@ -3,8 +3,7 @@ set -euo pipefail
 
 adapter_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$adapter_dir/queue-case.sh"
-[[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]]
-fixture=$(mktemp -d /dev/shm/io-journey-trace-test.XXXXXX)
+fixture=$(mktemp -d /var/tmp/io-journey-trace-test.XXXXXX)
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir "$fixture/existing"
 printf '1\n' > "$fixture/existing/tracing_on"

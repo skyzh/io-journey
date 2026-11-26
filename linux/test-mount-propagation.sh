@@ -4,7 +4,7 @@ set -euo pipefail
 linux_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$linux_dir/mount-state.sh"
 
-mount_parent=/dev/shm/example-run/mount
+mount_parent=/var/tmp/example-run/mount
 findmnt() {
     [[ "$*" == "-n -o PROPAGATION -T $mount_parent" ]] || return 2
     if [[ "$fixture" == unavailable ]]; then return 1; fi

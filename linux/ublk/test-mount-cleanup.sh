@@ -2,10 +2,9 @@
 set -euo pipefail
 
 adapter_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-[[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]]
 source "$adapter_dir/cleanup.sh"
 source "$adapter_dir/../fuse/mount.sh"
-scratch=$(mktemp -d /dev/shm/io-journey-unmount-test.XXXXXX)
+scratch=$(mktemp -d /var/tmp/io-journey-unmount-test.XXXXXX)
 trap 'rm -rf -- "$scratch"' EXIT
 
 # Model probe errors before and after unmount and a mounted path that is busy.

@@ -9,5 +9,6 @@ create-missing = false
 extra-watch-dirs = ["course"]
 
 [output.html]
-additional-css = ["course/sponsor.css", "course/construction-notice.css"]
+git-repository-url = "https://github.com/skyzh/io-journey"
+additional-css = ["course/sponsor.css", "course/construction-notice.css", "course/write-path.css"]
 site-url = "/io-journey/"

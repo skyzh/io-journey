@@ -4,68 +4,80 @@ When an application appends to a file and calls sync, its bytes pass
 through several layers before they rest on flash. In this course you build
 four of those layers in Rust and run them against a simulated NAND chip:
 
-```text
-application    append "second" to /events.log, then sync
-    │          bytes at a file offset
-filesystem     which 4 KiB logical blocks change, and the new file length
-    │          block requests: read LBA 1, write LBA 1, write LBA 0, flush
-block queue    at most two requests in flight; a flush waits for earlier writes
-    │          one 4 KiB write to one logical block address (LBA)
-FTL            choose an erased page, program it, point the LBA at it
-    │          program page 3, erase block 2
-NAND           16 pages of 4 KiB, grouped into 4 erase blocks of 4 pages
-```
+<ol class="write-path" aria-label="One append through the storage stack">
+  <li><strong>Application</strong><span>Write the record bytes at the end of the log, then sync the file</span></li>
+  <li><strong>Filesystem</strong><span>Translate the byte offset into a logical block and update the file length</span></li>
+  <li><strong>Block queue</strong><span>Send 4 KiB block requests, then flush the earlier writes</span></li>
+  <li><strong>Flash translation layer</strong><span>Map each updated block to a fresh page</span></li>
+  <li><strong>Simulated NAND</strong><span>Program pages and erase whole blocks</span></li>
+</ol>
+
+The application acknowledges the records after the flush completes and
+file sync returns.
 
 Each layer talks to the one below it in a smaller vocabulary. The
 application knows files and bytes. The filesystem turns them into numbered
 4 KiB logical blocks. The queue decides which block request runs next. The
 flash translation layer (FTL) decides where on the chip each logical block
 lives. The NAND model stores pages and enforces the rules real flash has.
+512-byte logical sectors are common, including on drives that emulate
+them over 4 KiB physical sectors. The course simplifies the model by
+using 4 KiB logical blocks, each sized to fit one simulated NAND page.
+The Linux ublk adapter advertises a 4 KiB logical sector. The application
+writes bytes at a file offset, and the filesystem sends whole-block
+requests to the device.
+[Logical and physical sector sizes](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/hard-drives-and-partitions?view=windows-11)
 
 ## Follow one append
 
-Run the demo from the [setup page](START.md) and find the second record.
-These are selected lines from `cargo xtask demo`, in the order they appear:
+The [reference demo](START.md#run-the-reference-demo) appends two records
+to `/events.log` and syncs the file. The filesystem keeps the file length
+in logical block 0 (LBA 0) and the record bytes in LBA 1. Watch where
+those two blocks move as the second record is appended.
 
-```text
-app    append 6 payload bytes
-fs     append 14 bytes at offset 13
-queue  submit #4 read LBA 1 (2/2)
-ftl    read LBA 1 from page 1
-queue  submit #5 write LBA 1 (1/2)
-fs     queue directory length 27
-queue  submit #6 write LBA 0 (2/2)
-fs     sync /events.log
-nand   program page 3
-ftl    map LBA 1 -> page 3, stale page 1
-queue  submit #7 flush (2/2)
-nand   program page 4
-ftl    map LBA 0 -> page 4, stale page 2
-ftl    flush published NAND pages and mapping in RAM
-app    acknowledged 2 records after flush
-```
+### 1. Read the block holding the first record
 
-Reading from the top:
+The first record takes 13 bytes (an 8-byte header and the 5-byte payload
+`first`). By the time request #4 reads LBA 1, the queue has completed the
+first record’s data and length writes. Here is the live mapping then.
 
-- **Application.** The payload `second` is 6 bytes. The record adds an
-  8-byte header holding its length and a CRC-32, so 14 bytes go to the file.
-- **Filesystem.** The file already holds the 13-byte first record, so the
-  new bytes land at offset 13. That is inside the file's first data block,
-  LBA 1, which already holds other bytes. The filesystem reads LBA 1,
-  changes 14 bytes, and writes the whole block back. Then it writes the
-  new length, 27, into its directory block, LBA 0. Sync asks for a flush.
-- **Queue.** Each read, write and flush becomes a numbered request. The
-  `(2/2)` means both queue slots are now full. The flush, request #7,
-  runs only after the writes submitted before it.
-- **FTL.** LBA 1 was stored on page 1. The FTL does not touch page 1. It
-  programs the new block into an erased page, page 3, and moves LBA 1's
-  pointer there. Page 1 still holds the old bytes, but nothing points to
-  it any more: it is *stale*. LBA 0 moves from page 2 to page 4 the same way.
-- **Flush.** Once the flush completes, the application treats both
-  records as durable and acknowledges them.
+<figure class="block-map">
+  <figcaption>Mapping when the second append reads LBA 1</figcaption>
+  <ul>
+    <li><div><strong>LBA 0</strong><span>File length: 13 bytes</span></div><div><strong>NAND page 2</strong><span>Directory block</span></div></li>
+    <li><div><strong>LBA 1</strong><span>Record bytes</span></div><div><strong>NAND page 1</strong><span>Holds <code>first</code></span></div></li>
+  </ul>
+</figure>
 
-The FTL's behavior, writing somewhere new instead of overwriting, comes
-straight from how NAND works.
+### 2. Append at byte offset 13 and write two blocks
+
+The second record takes 14 bytes (the header plus `second`). The
+filesystem copies those bytes into the block it read, starting at
+offset 13. It queues the updated data block (#5) and the new file
+length (#6). The FTL writes both blocks to fresh NAND pages. Pages 1
+and 2 become stale as their mappings move.
+
+<figure class="block-map">
+  <figcaption>Mapping after writes #5 and #6, saved by flush #7</figcaption>
+  <ul>
+    <li><div><strong>LBA 0</strong><span>File length: 27 bytes</span></div><div><strong>NAND page 4</strong><span>Replaces page 2</span></div></li>
+    <li><div><strong>LBA 1</strong><span>Record bytes</span></div><div><strong>NAND page 3</strong><span>Holds <code>first</code> and <code>second</code></span></div></li>
+  </ul>
+</figure>
+
+### 3. Sync the file, then recover the saved mapping
+
+The application syncs the file. The queue runs its flush (#7) after
+both block writes complete. The FTL saves the two new mappings and
+their page contents in the simulated durable image. Once sync returns,
+the application acknowledges both records.
+
+The demo then appends `volatile` without syncing again. That append is
+readable before the cut. After the cut, the FTL reopens from the saved
+image and follows the mappings back to pages 4 and 3. The recovered
+file has length 27 and contains only `first` and `second`. The demo
+then tries a torn page program and verifies that the same two records
+survive.
 
 ## What NAND allows
 
@@ -132,4 +144,6 @@ a separate exercise.
 | [4. Efficient application I/O](04-append.md) | Application | Record recovery and an append engine that acknowledges after sync |
 
 Chapter 1 starts on a complete NAND model. Each later chapter runs on
-the code you wrote in the earlier ones. Start with [NAND to SSD](01-ftl.md).
+the code you wrote in the earlier ones.
+
+Next, [set up your environment and run the demo](START.md).

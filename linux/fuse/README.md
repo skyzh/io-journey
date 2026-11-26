@@ -1,19 +1,19 @@
 # Recover the learner filesystem through FUSE
 
 Run from the checkout in the [root guest shell](../../course/START.md#mounted-labs)
-with Rust, Python 3, `/dev/fuse`, and `/dev/shm` on tmpfs.
+with Rust, Python 3, and `/dev/fuse`.
 
 ```sh
 cargo xtask fuse image
 cargo xtask fuse ublk
 ```
 
-On `image`, the script creates an 8 MiB file on tmpfs and saves copies
+On `image`, the script creates an 8 MiB file under `/var/tmp` and saves copies
 at the acknowledged sync points. On `ublk`, it verifies the ownership
 and geometry of a fresh RAM-backed block device and saves the exact
 FTL checkpoint from the last flush. The latter uses the
 [ublk lab setup](../ublk/README.md). Both runs build and keep scratch
-data in guest tmpfs.
+data under `/var/tmp`.
 
 The app appends two length- and CRC-framed records, syncs the file and
 root directory, then appends an unsynced third record. After reopen it
@@ -55,7 +55,7 @@ committed frame returns a corruption error.
 ## Run the crash checks
 
 From the same checkout, run the focused model checks without a mount.
-The command compiles offline and keeps the target in guest tmpfs.
+The command compiles offline and uses the ordinary Cargo target directory.
 
 ```sh
 cargo xtask test reference journal_fs
