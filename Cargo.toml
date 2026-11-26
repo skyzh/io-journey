@@ -13,10 +13,6 @@ learner-scheduler = ["learner-queue"]
 learner-cache = ["learner-scheduler"]
 learner-journal = ["learner-cache"]
 learner-append = ["learner-journal"]
-indexed-ftl = []
-learner-index = ["learner", "indexed-ftl"]
-shared-pages = []
-learner-sharing = ["learner", "shared-pages"]
 
 [dependencies]
 

@@ -281,6 +281,9 @@ cargo xtask nand-latency
 
 It replays the same 48 reads three times on a two-die model with
 illustrative service times: read 80 µs, program 400 µs, erase 1,600 µs.
+To vary a service time, pass `--read-us`, `--program-us`, or `--erase-us`
+with a positive integer.
+
 Look at the `read p99 us` column. With reads alone it is 80 µs. Add
 overwrites and it rises to 6,895 µs, because reads on the busy die wait
 behind programs. Let garbage collection run as well and it reaches
