@@ -5,8 +5,8 @@
 [![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
 
 I/O Journey is a hands-on Rust course about what happens when an application
-writes a file. Build a small storage stack, connect it to Linux, and see which
-writes survive a simulated power cut.
+writes a file. Build a small storage stack on macOS or Linux and see which
+writes survive a simulated power cut. Optional labs connect it to a Linux kernel.
 
 **[Start the course](https://skyzh.github.io/io-journey/00-architecture.html)** · **[Browse the chapters](https://skyzh.github.io/io-journey/00-architecture.html#what-you-build)**
 
@@ -17,11 +17,7 @@ LLMs and has yet to receive Chi's full review.
 
 ## What you’ll build
 
-The Linux append lab runs both I/O engines on both filesystems through ublk.
-The block queue lab uses mixed random reads and writes.
-The diagram also shows where physical storage and the planned NVMe lab fit.
-
-![Storage stack paths from a user application through ext4 or FUSE to ublk, physical storage, or the planned NVMe controller. The course device uses a Rust queue, FTL, and simulated NAND.](./course/book/assets/storage-stack.svg)
+![In the portable capstone, appends pass through a mock I/O ring and join random I/O at the userspace write-back cache. The cache sits above the journaled filesystem and host scheduler. The device queue, flash translation layer, and simulated NAND are also used in the optional Linux labs through ublk.](./course/book/assets/storage-stack.svg)
 
 - [NAND to SSD](course/01-ftl.md) — Implement NAND page operations, then make flash behave like a disk
   and test overwrite, collection, and recovery.
@@ -29,10 +25,10 @@ The diagram also shows where physical storage and the planned NVMe lab fit.
   handles competing requests.
   [Host block scheduling](course/02a-scheduler.md) compares pass-through
   and bounded read-first dispatch ahead of the device queue.
-- [Blocks to files](course/03-filesystem.md) — Build a small filesystem and
-  see what it recovers after a crash.
-- [Efficient application I/O](course/04-append.md) — Build an append log and
-  compare two ways of writing to Linux filesystems.
+- [Blocks to files](course/03-filesystem.md) — Build a userspace write cache
+  and a journaled filesystem.
+- [Efficient application I/O](course/04-append.md) — Build an append log, check
+  completions on a mock I/O ring, and run the whole stack.
 
 Sponsored by [Raft.build](https://skyzh.github.io/io-journey/sponsor.html).
 

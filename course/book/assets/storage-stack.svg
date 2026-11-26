@@ -1,90 +1,100 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 824" width="700" height="824" role="img" aria-labelledby="title description">
-  <title id="title">I/O Journey storage paths</title>
-  <desc id="description">A user application can use a synchronous or io_uring engine with ext4 or FUSE. Both filesystems use the Linux block layer. The ublk lab uses the course's Rust queue, flash translation layer, and simulated NAND. Physical storage is an alternative device path. A planned path would use the Linux NVMe driver and an emulated NVMe controller with the same Rust queue.</desc>
-  <rect x="1" y="1" width="698" height="822" rx="20" fill="#f8fafc" stroke="#b4c7d8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 755" width="780" height="755" role="img" aria-labelledby="title description">
+  <title id="title">I/O Journey storage stack</title>
+  <desc id="description">A user application appends records or reads and writes file blocks. In the portable capstone, appends pass through a mock I/O ring. Both workloads use a userspace write-back cache above a journaled filesystem. A host scheduler sends block requests to the device queue, which uses a flash translation layer and simulated NAND. The optional Linux labs use synchronous I/O or kernel io_uring, ext4 or the course filesystem through FUSE, and the Linux block layer. The ublk adapter connects these labs to the same course device queue. A physical disk is an alternative to ublk. QEMU, SPDK, and VM virtio are planned labs.</desc>
 
-  <g fill="none" stroke="#345b7c" stroke-width="2">
-    <path d="M324 78L180 113"/>
-    <path d="M376 78L520 113"/>
-    <path d="M145 174V224"/>
-    <path d="M186 174L478 224"/>
-    <path d="M514 174L222 224"/>
-    <path d="M555 174V224"/>
-    <path d="M180 284L323 322"/>
-    <path d="M520 284L377 322"/>
-    <path d="M286 382L120 422"/>
-    <path d="M350 382V422"/>
-    <path d="M120 502V546L273 579"/>
-    <path d="M350 636V665"/>
-    <path d="M350 722V751"/>
+  <rect x="1" y="1" width="778" height="753" rx="18" fill="#f8fafc" stroke="#abbcc9"/>
+  <rect x="18" y="105" width="372" height="362" rx="14" fill="#edf5ff"/>
+  <rect x="404" y="105" width="358" height="362" rx="14" fill="#edf8f4"/>
+  <rect x="18" y="476" width="372" height="261" rx="14" fill="#edf5ff"/>
+  <rect x="404" y="574" width="358" height="163" rx="14" fill="#f4f0fa" stroke="#86779b" stroke-dasharray="5 4"/>
+
+  <g fill="none" stroke="#385d80" stroke-width="2">
+    <path d="M285 83L204 105M230 83V94H28V257H38"/>
+    <path d="M204 204V228M204 287V311M204 370V394"/>
+    <path d="M342 453V510M204 569V587M204 646V664"/>
   </g>
-  <g fill="#345b7c">
-    <polygon points="180,113 192.2,103.9 195.0,115.5"/>
-    <polygon points="520,113 505.0,115.5 507.8,103.9"/>
-    <polygon points="145,224 139.0,210.0 151.0,210.0"/>
-    <polygon points="478,224 463.2,227.6 465.2,215.7"/>
-    <polygon points="222,224 234.8,215.7 236.8,227.6"/>
-    <polygon points="555,224 549.0,210.0 561.0,210.0"/>
-    <polygon points="323,322 307.9,324.2 311.0,312.6"/>
-    <polygon points="377,322 389.0,312.6 392.1,324.2"/>
-    <polygon points="120,422 132.2,412.9 135.0,424.6"/>
-    <polygon points="350,422 344.0,408.0 356.0,408.0"/>
-    <polygon points="273,579 258.0,581.9 260.6,570.2"/>
-    <polygon points="350,665 344.0,651.0 356.0,651.0"/>
-    <polygon points="350,751 344.0,737.0 356.0,737.0"/>
+  <g fill="#385d80">
+    <polygon points="204,105 213,97 216,106"/>
+    <polygon points="38,257 30,253 30,261"/>
+    <polygon points="204,228 199,218 209,218"/>
+    <polygon points="204,311 199,301 209,301"/>
+    <polygon points="204,394 199,384 209,384"/>
+    <polygon points="342,510 337,500 347,500"/>
+    <polygon points="204,587 199,577 209,577"/>
+    <polygon points="204,664 199,654 209,654"/>
   </g>
-  <g fill="none" stroke="#765273" stroke-width="2" stroke-dasharray="7 5">
-    <path d="M414 382L580 422"/>
-    <path d="M555 502V538"/>
-    <path d="M480 572L459 589"/>
+  <g fill="none" stroke="#336b5c" stroke-width="2">
+    <path d="M495 83L583 105"/>
+    <path d="M583 204V228M583 287V311"/>
+    <path d="M583 370V381H498V394M583 381H668V394"/>
+    <path d="M498 453V539H370"/>
   </g>
-  <g fill="#765273">
-    <polygon points="580,422 565.0,424.6 567.8,412.9"/>
-    <polygon points="555,538 549.0,524.0 561.0,524.0"/>
-    <polygon points="459,589 466.1,575.5 473.7,584.9"/>
+  <g fill="#336b5c">
+    <polygon points="583,105 571,106 573,97"/>
+    <polygon points="583,228 578,218 588,218"/>
+    <polygon points="583,311 578,301 588,301"/>
+    <polygon points="498,394 493,384 503,384"/>
+    <polygon points="668,394 663,384 673,384"/>
+    <polygon points="370,539 380,534 380,544"/>
   </g>
 
-  <g stroke="#84a7c3">
-    <rect x="235" y="22" width="230" height="56" rx="10" fill="#dbeafa"/>
-    <rect x="45" y="114" width="240" height="60" rx="10" fill="#eaf3fb"/>
-    <rect x="415" y="114" width="240" height="60" rx="10" fill="#eaf3fb"/>
-    <rect x="45" y="225" width="240" height="59" rx="10" fill="#eaf3fb"/>
-    <rect x="415" y="225" width="240" height="59" rx="10" fill="#eaf3fb"/>
-    <rect x="235" y="323" width="230" height="59" rx="10" fill="#dbeafa"/>
-    <rect x="20" y="423" width="200" height="79" rx="10" fill="#dbeafa"/>
-    <rect x="250" y="423" width="200" height="79" rx="10" fill="#eef2f6"/>
-    <rect x="242" y="580" width="216" height="56" rx="10" fill="#dbeafa"/>
-    <rect x="210" y="666" width="280" height="56" rx="10" fill="#dbeafa"/>
-    <rect x="242" y="752" width="216" height="48" rx="10" fill="#dbeafa"/>
+  <rect x="210" y="18" width="360" height="65" rx="11" fill="#dae7f2" stroke="#829fb9"/>
+  <g fill="#ffffff" stroke="#8aa8c3">
+    <rect x="38" y="145" width="332" height="59" rx="9"/>
+    <rect x="38" y="228" width="332" height="59" rx="9"/>
+    <rect x="38" y="311" width="332" height="59" rx="9"/>
+    <rect x="38" y="394" width="332" height="59" rx="9"/>
+    <rect x="38" y="510" width="332" height="59" rx="9"/>
+    <rect x="38" y="587" width="332" height="59" rx="9"/>
+    <rect x="38" y="664" width="332" height="59" rx="9"/>
   </g>
-  <g fill="#f6edf6" stroke="#a17a9d" stroke-dasharray="6 4">
-    <rect x="480" y="423" width="200" height="79" rx="10"/>
-    <rect x="480" y="539" width="200" height="68" rx="10"/>
+  <g fill="#ffffff" stroke="#84aa9e">
+    <rect x="424" y="145" width="318" height="59" rx="9"/>
+    <rect x="424" y="228" width="318" height="59" rx="9"/>
+    <rect x="424" y="311" width="318" height="59" rx="9"/>
+    <rect x="424" y="394" width="148" height="59" rx="9"/>
+    <rect x="594" y="394" width="148" height="59" rx="9"/>
   </g>
 
-  <g font-family="system-ui, -apple-system, sans-serif" font-size="20" text-anchor="middle" fill="#14324a">
-    <text x="350" y="57" font-weight="650">User application</text>
-    <text x="165" y="151">Synchronous engine</text>
-    <text x="535" y="151">io_uring engine</text>
-    <text x="165" y="262">ext4</text>
-    <text x="535" y="249">Course filesystem</text>
-    <text x="535" y="272">via FUSE</text>
-    <text x="350" y="360" font-weight="650">Linux block layer</text>
-    <text x="120" y="448" font-weight="650">ublk</text>
-    <text x="120" y="469" font-weight="400" font-size="17">Virtual block device</text>
-    <text x="120" y="490" font-weight="400" font-size="16">Current lab</text>
-    <text x="350" y="457">Physical</text>
-    <text x="350" y="480">block device</text>
-    <text x="350" y="603">Rust block request</text>
-    <text x="350" y="625">and completion queue</text>
-    <text x="350" y="701">Flash translation layer (FTL)</text>
-    <text x="350" y="783">Simulated NAND</text>
-  </g>
-  <g font-family="system-ui, -apple-system, sans-serif" font-size="19" text-anchor="middle" fill="#5d365a">
-    <text x="580" y="455">Linux NVMe driver</text>
-    <text x="580" y="478" font-size="16">TBD</text>
-    <text x="580" y="565">Emulated NVMe</text>
-    <text x="580" y="588">controller · TBD</text>
-    <text x="622" y="522" font-size="14">NVMe commands</text>
+  <g font-family="system-ui, -apple-system, sans-serif" text-anchor="middle" fill="#152d46">
+    <g font-size="22" font-weight="700">
+      <text x="390" y="46">User application</text>
+      <text x="204" y="129">Portable capstone</text>
+      <text x="583" y="129">Optional Linux labs</text>
+    </g>
+    <g font-size="19" font-weight="700">
+      <text x="204" y="170">Mock I/O ring</text>
+      <text x="204" y="253">Userspace write-back cache</text>
+      <text x="204" y="336">Journaled filesystem</text>
+      <text x="204" y="419">Host block scheduler</text>
+      <text x="583" y="170">Synchronous I/O or io_uring</text>
+      <text x="583" y="253">ext4 or FUSE</text>
+      <text x="583" y="336">Linux block layer</text>
+      <text x="498" y="419">ublk</text>
+      <text x="668" y="419">Physical disk</text>
+      <text x="204" y="535">Device queue</text>
+      <text x="204" y="612">Flash translation layer</text>
+      <text x="204" y="689">Simulated NAND</text>
+      <text x="583" y="607">Planned labs</text>
+    </g>
+    <g font-size="16" fill="#364f67">
+      <text x="390" y="69">Append records · Random reads and writes</text>
+      <text x="204" y="191">Append completions and group commit</text>
+      <text x="204" y="274">Buffers dirty file blocks</text>
+      <text x="204" y="357">Maps file offsets to device blocks</text>
+      <text x="204" y="440">Selects requests before device admission</text>
+      <text x="583" y="191">Uses real kernel interfaces</text>
+      <text x="583" y="274">Linux ext4 or the course filesystem</text>
+      <text x="583" y="357">Submits block requests to a device</text>
+      <text x="498" y="440">Course adapter</text>
+      <text x="668" y="440">Alternative device</text>
+      <text x="204" y="556">Admits requests and orders flushes</text>
+      <text x="204" y="633">Maps logical blocks to flash pages</text>
+      <text x="204" y="710">Reads and programs pages, erases blocks</text>
+      <text x="583" y="638">QEMU NVMe · TBD</text>
+      <text x="583" y="664">SPDK · TBD</text>
+      <text x="583" y="690">VM virtio · TBD</text>
+    </g>
+    <text x="204" y="495" font-size="17" font-weight="700">Course block device</text>
   </g>
 </svg>
