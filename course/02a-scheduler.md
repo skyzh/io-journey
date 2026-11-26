@@ -77,8 +77,9 @@ cargo xtask host-schedule learner
 Compare how long requests 1 and 3 wait before the device starts them.
 The read advances and the older write waits longer. Both policies
 finish at tick 30 because they run the same work through one busy
-service engine. These are modeled ticks. Use the mounted labs to
-observe timing and queue depth through an actual Linux driver.
+service engine. These are modeled ticks. To observe timing and queue
+depth through an actual Linux driver, see the
+[Linux block-device lab](linux-ublk.md).
 
 The [planned device labs](planned-labs.md) list the QEMU, SPDK, and
 VM virtio paths for future comparisons.

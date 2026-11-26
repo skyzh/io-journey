@@ -3,9 +3,32 @@
 Continue in the checkout with your working FTL from
 [NAND to SSD](01-ftl.md). The queue sends its requests to that FTL.
 
-Your inner Rust queue accepts whole requests. A range uses one slot even
-when it spans several blocks. Acceptance records an ID. Completion
-returns that ID with the result after the device operation runs.
+## What the queue does
+
+The FTL from Chapter 1 runs one call at a time, as soon as it is made. A
+real device accepts several requests, holds them, and runs them while new
+ones keep arriving. This chapter adds that layer: a device queue in front
+of your FTL.
+
+- **Submit.** A caller hands the queue a request: a read or write of a
+  range of blocks, or a flush. If there is room, the queue accepts it and
+  returns an ID. A range takes one slot, however many blocks it covers.
+- **Complete.** The queue takes the oldest accepted request, runs it
+  against the FTL, and returns its ID with the result.
+- **Depth.** The queue holds at most a fixed number of accepted requests
+  that haven't completed yet.
+- **Backpressure.** When the queue is full, submit hands the request back
+  instead of accepting it. The caller has to collect a completion, which
+  frees a slot, before trying again. The demo trace shows this as
+  `backpressure at depth 2. Completing the oldest request`.
+
+A flush is a request too. Your writes change the FTL's live mapping, which
+a power cut loses, just like a real drive's volatile write cache. When the
+queue runs a flush, the FTL publishes its durable image, as in
+[What a flush saves](01-ftl.md#what-a-flush-saves). That image covers every
+write the queue completed before the flush. This queue completes requests
+in submission order, so a flush covers exactly the writes submitted before
+it. Writes submitted after it aren't covered until the next flush.
 
 ## Admit requests without executing them
 
@@ -44,26 +67,43 @@ validation, backpressure, and cancellation after a failed block.
 
 ## Choose a device request to serve
 
-The ublk adapter plays the device. Its dispatcher chooses among tags
-Linux has already sent to it, before forwarding each request to the
-Rust device queue. Keep that queue FIFO
-and implement the read-first choice in
+A device doesn't have to serve waiting requests in arrival order. When
+several requests have reached the device but haven't entered its FIFO
+queue yet, the device's dispatcher picks which one to admit next. For example, it can let a read go ahead of an earlier write, so the
+read isn't stuck behind slower work. It must never let a read pass a write
+to the same blocks, because the read would return stale data. It must
+never move anything across a flush.
+
+Keep the device queue itself FIFO. Implement the choice as a separate
+function, `next_index` in
 [`course/learner/dispatch.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/dispatch.rs).
+It receives a policy, the batch of waiting requests, and a closure that
+gives each request's kind and sector span. It returns the index of the
+request to serve next.
 
 Once the queue checks pass, run `cargo xtask learner dispatch` to check
 policy selection.
-FIFO always chooses index zero.
-For read-first, find the first read before a barrier that has no
-overlapping earlier write. `request` supplies the kind and sector span
-for each batch entry. `disjoint` checks both span ends and treats overflow
-conservatively. Return zero if no read qualifies. Rerun the dispatch
-check for disjoint and overlapping reads, a flush boundary, and overflow.
 
-## Compare on the guest
+- **FIFO** always chooses index zero.
+- **Read-first** chooses the first read that comes before any barrier (a
+  flush, `Kind::Barrier`) and
+  doesn't overlap an earlier write in the batch. The supplied `disjoint`
+  checks both span ends and treats overflow conservatively. Return zero
+  if no read qualifies.
 
-The [Linux block-device lab](linux-ublk.md) runs your device queue
-through ublk. It includes the ext4 recovery check and a fio comparison.
-You can continue to host scheduling on macOS.
+Rerun the dispatch check for disjoint and overlapping reads, a flush
+boundary, and overflow. In the [Linux block-device lab](linux-ublk.md),
+the ublk adapter uses this same function to choose among the request tags
+Linux has already sent it.
+
+<a id="compare-on-the-guest"></a>
+
+## Try it on Linux
+
+The optional [Linux block-device lab](linux-ublk.md) runs your device
+queue through ublk. It includes an ext4 recovery check and a fio
+comparison of FIFO and read-first. The main path continues on macOS or
+Linux.
 
 Next, [Host block scheduling](02a-scheduler.md) chooses which waiting
 request to send before it enters the device queue.

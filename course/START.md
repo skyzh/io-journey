@@ -27,23 +27,6 @@ Run the demo and focused checks as an ordinary user. Cargo uses its
 normal cache and build directories on disk. These checks use the
 standard library and run offline.
 
-## Run the Linux labs
-
-Use a Linux machine, a remote Linux server, or a Linux VM with the
-kernel features each lab needs. OrbStack is one VM environment tested
-for the mounted labs. Open the course checkout in your Linux shell.
-
-### Mounted labs
-
-Run the mounted commands from the checkout in a root Linux shell.
-The runners use private mount namespaces and fresh, disk-backed
-Cargo caches. Give the build access to the Cargo registry or a
-configured mirror, starting with the mounted lab in Chapter 2. If you
-use a mirror, add its source settings to the checkout's
-`.cargo/config.toml` so the mounted runners can read them.
-The lab instructions list the required kernel devices and tools.
-The queue and append benchmarks keep their captures in `/dev/shm`.
-
 ## Run the reference demo
 
 ```sh
@@ -76,3 +59,23 @@ The app checks aligned reads, writes, and mixed I/O. It sees three log
 records before a simulated cut and recovers the two it acknowledged
 after sync. `cargo xtask test` runs the full sequence of focused checks
 and finishes with the same recovery run.
+
+## Run the Linux labs
+
+The main chapters don't need Linux. The optional
+[Linux labs](linux-labs.md) do.
+
+Use a Linux machine, a remote Linux server, or a Linux VM with the
+kernel features each lab needs. OrbStack is one VM environment tested
+for the mounted labs. Open the course checkout in your Linux shell.
+
+### Mounted labs
+
+Run the mounted commands from the checkout in a root Linux shell.
+The runners use private mount namespaces and fresh, disk-backed
+Cargo caches. Give the build access to the Cargo registry or a
+configured mirror, starting with the first lab after Chapter 2. If you
+use a mirror, add its source settings to the checkout's
+`.cargo/config.toml` so the mounted runners can read them.
+The lab instructions list the required kernel devices and tools.
+The queue and append benchmarks keep their captures in `/dev/shm`.

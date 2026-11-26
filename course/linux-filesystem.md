@@ -8,7 +8,7 @@ doesn't depend on it.
 ## Run the lab
 
 Use the [FUSE prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/fuse/README.md).
-From the checkout in the [root guest shell](START.md#mounted-labs), run
+From the checkout in the [root Linux shell](START.md#mounted-labs), run
 both backends.
 
 ```sh
