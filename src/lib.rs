@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod dispatch;
 #[cfg(feature = "indexed-ftl")]
 mod free_space;

@@ -58,6 +58,44 @@ than the marker describes, reopen reports corruption instead of guessing.
 already has on disk. `sync_dir` commits the whole directory, so it is the
 call that makes a create, rename or delete durable.
 
+## Buffer writes in a userspace cache
+
+A write-back cache can make a write visible to reads before it reaches
+backing storage. In this exercise the cache holds a fixed number of
+4 KiB blocks. Each entry has an LBA, its bytes, and a dirty bit. Reads
+prefer the cached value. Writes update it and mark it dirty.
+
+Run the check from your macOS or Linux checkout:
+
+```sh
+cargo xtask learner cache
+```
+
+Open [`course/learner/cache.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/cache.rs).
+The supplied code handles hits and inserts. Your two functions move
+dirty blocks out of the cache:
+
+1. In `evict_oldest`, inspect the front entry. If dirty, write a copy
+   of its block to the backing disk before removing the entry. A
+   clean entry needs no write. If the write fails, leave the entry in
+   place and return the error.
+2. In `flush_dirty`, write every dirty entry, then flush the backing
+   disk. Flush even when every entry is clean. Earlier evictions may
+   already have sent writes to the backing disk without flushing it.
+   Clear the dirty flags only after the backing flush succeeds.
+
+Rerun the check. The first case reads the dirty bytes before sync, cuts
+power before sync, and then repeats with a successful sync. The second
+case fills the cache and proves that an eviction issues a write while
+the backing device may still hold that write in its own volatile cache.
+The third case checks that an eviction failure leaves the dirty bytes
+readable and that a failed flush keeps the entries dirty for a retry.
+
+The userspace cache decides when to send blocks to the device. The
+device’s flush establishes the simulator’s recovery boundary. Next the
+journal decides which file and directory changes to publish at that
+boundary.
+
 ## Make the redo commit recoverable
 
 Open [`course/learner/journal.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/journal.rs) and run
