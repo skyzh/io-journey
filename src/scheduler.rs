@@ -3,7 +3,7 @@ use std::io;
 use std::num::NonZeroUsize;
 
 use crate::dispatch::{DeviceRequest, Kind};
-use crate::ftl::Ftl;
+use crate::ftl::{FlashImage, Ftl};
 use crate::nand::BLOCK_BYTES;
 use crate::queue::{BlockQueue, Driver, Operation, RequestId, Response, SubmitError};
 use crate::Trace;
@@ -13,7 +13,7 @@ use crate::Trace;
 mod policy;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Policy {
+pub enum Policy {
     PassThrough,
     BoundedReadFirst,
 }
@@ -26,82 +26,123 @@ struct Staged {
     operation: Operation,
 }
 
-struct Finished {
-    id: usize,
-    response: Response,
-    wait_ticks: usize,
-    completed_at: usize,
+pub struct Finished {
+    pub id: usize,
+    pub response: Response,
+    pub wait_ticks: usize,
+    pub completed_at: usize,
 }
 
-struct Run {
+pub struct HostScheduler {
     device: BlockQueue,
-    finished: Vec<Finished>,
+    depth: NonZeroUsize,
+    selection: Policy,
+    failed: bool,
 }
 
-/// The trace is ready at tick zero. The host fills the available device
-/// slots, then advances one operation on the FIFO device.
-fn replay(
-    operations: impl IntoIterator<Item = Operation>,
-    selection: Policy,
-    depth: NonZeroUsize,
-) -> io::Result<Run> {
-    let mut staged = operations
-        .into_iter()
-        .enumerate()
-        .map(|(index, operation)| {
-            Ok(Staged {
-                id: index + 1,
-                request: describe(&operation)?,
-                operation,
-            })
-        })
-        .collect::<io::Result<VecDeque<_>>>()?;
-    let mut device = BlockQueue::new(Ftl::new(), depth);
-    let mut dispatched: VecDeque<(RequestId, usize, Kind)> = VecDeque::new();
-    let mut finished = Vec::with_capacity(staged.len());
-    let mut remaining_bypasses = READ_BYPASS_BUDGET;
-    let mut elapsed = 0;
-    let mut trace = Trace::new();
-
-    while !staged.is_empty() || !dispatched.is_empty() {
-        while !staged.is_empty() && dispatched.len() < depth.get() {
-            let index =
-                policy::choose_request(selection, staged.make_contiguous(), remaining_bypasses);
-            let request = staged
-                .remove(index)
-                .ok_or_else(|| io::Error::other("scheduler selected an invalid index"))?;
-            let device_id = device
-                .try_submit(request.operation, &mut trace)
-                .map_err(|error| match error {
-                    SubmitError::Rejected(error) => error,
-                    SubmitError::Full(_) => io::Error::other("scheduler exceeded device depth"),
-                })?;
-            let kind = request.request.kind;
-            remaining_bypasses = policy::after_dispatch(remaining_bypasses, index, kind);
-            dispatched.push_back((device_id, request.id, kind));
+impl HostScheduler {
+    pub fn new(ftl: Ftl, depth: NonZeroUsize, selection: Policy) -> Self {
+        Self {
+            device: BlockQueue::new(ftl, depth),
+            depth,
+            selection,
+            failed: false,
         }
-
-        let (device_id, id, kind) = dispatched.pop_front().expect("at least one device request");
-        let completion = device
-            .complete_next(Driver::Explicit, &mut trace)?
-            .ok_or_else(|| io::Error::other("missing device completion"))?;
-        if completion.id != device_id {
-            return Err(io::Error::other("unexpected FIFO device completion ID"));
-        }
-        let wait_ticks = elapsed;
-        elapsed += match kind {
-            Kind::Read => 2,
-            Kind::Write => 8,
-            Kind::Barrier => 4,
-        };
-        finished.push(Finished {
-            id,
-            response: completion.result?,
-            wait_ticks,
-            completed_at: elapsed,
-        });
     }
-    Ok(Run { device, finished })
+
+    pub fn logical_blocks(&self) -> usize {
+        self.device.logical_blocks()
+    }
+
+    pub fn power_cut(self) -> FlashImage {
+        self.device.power_cut()
+    }
+
+    /// Treat this batch as ready at tick zero and collect completions.
+    /// IDs are one-based positions in the batch. On error, reopen the
+    /// last flushed image before submitting another batch.
+    pub fn execute(
+        &mut self,
+        operations: impl IntoIterator<Item = Operation>,
+    ) -> io::Result<Vec<Finished>> {
+        if self.failed {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "host scheduler stopped after a failure; reopen the image",
+            ));
+        }
+        let result = self.execute_ready(operations);
+        self.failed = result.is_err();
+        result
+    }
+
+    fn execute_ready(
+        &mut self,
+        operations: impl IntoIterator<Item = Operation>,
+    ) -> io::Result<Vec<Finished>> {
+        let mut staged = operations
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                Ok(Staged {
+                    id: index + 1,
+                    request: describe(&operation)?,
+                    operation,
+                })
+            })
+            .collect::<io::Result<VecDeque<_>>>()?;
+        let mut dispatched: VecDeque<(RequestId, usize, Kind)> = VecDeque::new();
+        let mut finished = Vec::with_capacity(staged.len());
+        let mut remaining_bypasses = READ_BYPASS_BUDGET;
+        let mut elapsed = 0;
+        let mut trace = Trace::new();
+
+        while !staged.is_empty() || !dispatched.is_empty() {
+            while !staged.is_empty() && dispatched.len() < self.depth.get() {
+                let index = policy::choose_request(
+                    self.selection,
+                    staged.make_contiguous(),
+                    remaining_bypasses,
+                );
+                let request = staged
+                    .remove(index)
+                    .ok_or_else(|| io::Error::other("scheduler selected an invalid index"))?;
+                let device_id = self
+                    .device
+                    .try_submit(request.operation, &mut trace)
+                    .map_err(|error| match error {
+                        SubmitError::Rejected(error) => error,
+                        SubmitError::Full(_) => io::Error::other("scheduler exceeded device depth"),
+                    })?;
+                let kind = request.request.kind;
+                remaining_bypasses = policy::after_dispatch(remaining_bypasses, index, kind);
+                dispatched.push_back((device_id, request.id, kind));
+            }
+
+            let (device_id, id, kind) =
+                dispatched.pop_front().expect("at least one device request");
+            let completion = self
+                .device
+                .complete_next(Driver::Explicit, &mut trace)?
+                .ok_or_else(|| io::Error::other("missing device completion"))?;
+            if completion.id != device_id {
+                return Err(io::Error::other("unexpected FIFO device completion ID"));
+            }
+            let wait_ticks = elapsed;
+            elapsed += match kind {
+                Kind::Read => 2,
+                Kind::Write => 8,
+                Kind::Barrier => 4,
+            };
+            finished.push(Finished {
+                id,
+                response: completion.result?,
+                wait_ticks,
+                completed_at: elapsed,
+            });
+        }
+        Ok(finished)
+    }
 }
 
 fn describe(operation: &Operation) -> io::Result<DeviceRequest> {
@@ -146,8 +187,8 @@ fn workload() -> [Operation; 8] {
     ]
 }
 
-fn verify(run: Run) -> io::Result<()> {
-    for completion in run.finished {
+fn verify(device: HostScheduler, finished: Vec<Finished>) -> io::Result<()> {
+    for completion in finished {
         let expected = match completion.id {
             2 => Some(0x12),
             3 | 4 | 7 => Some(0),
@@ -162,7 +203,7 @@ fn verify(run: Run) -> io::Result<()> {
         }
     }
     let mut trace = Trace::new();
-    let reopened = Ftl::open(run.device.power_cut(), &mut trace)?;
+    let reopened = Ftl::open(device.power_cut(), &mut trace)?;
     if !reopened
         .read(0, &mut trace)?
         .iter()
@@ -179,16 +220,17 @@ pub fn compare() -> io::Result<()> {
     let depth = NonZeroUsize::new(2).unwrap();
     println!("All requests arrive at tick 0. Device depth 2. Service costs in ticks: read 2, write 8, flush 4.");
     for selection in [Policy::PassThrough, Policy::BoundedReadFirst] {
-        let run = replay(workload(), selection, depth)?;
+        let mut device = HostScheduler::new(Ftl::new(), depth, selection);
+        let finished = device.execute(workload())?;
         println!("\n{selection:?}");
         println!("request\twait ticks\tcompletion tick");
-        for completion in &run.finished {
+        for completion in &finished {
             println!(
                 "{}\t{}\t{}",
                 completion.id, completion.wait_ticks, completion.completed_at
             );
         }
-        verify(run)?;
+        verify(device, finished)?;
         println!("Verified all read data and recovered the write before the flush.");
     }
     Ok(())
@@ -201,28 +243,39 @@ mod tests {
     #[test]
     fn bounded_reads_advance_without_crossing_a_write_or_flush_dependency() {
         for depth in [NonZeroUsize::MIN, NonZeroUsize::new(2).unwrap()] {
-            let baseline = replay(workload(), Policy::PassThrough, depth).unwrap();
-            let scheduled = replay(workload(), Policy::BoundedReadFirst, depth).unwrap();
-            let order = |run: &Run| {
-                run.finished
-                    .iter()
-                    .map(|result| result.id)
-                    .collect::<Vec<_>>()
-            };
+            let mut fifo = HostScheduler::new(Ftl::new(), depth, Policy::PassThrough);
+            let mut read_first = HostScheduler::new(Ftl::new(), depth, Policy::BoundedReadFirst);
+            let baseline = fifo.execute(workload()).unwrap();
+            let scheduled = read_first.execute(workload()).unwrap();
+            let order = |run: &[Finished]| run.iter().map(|result| result.id).collect::<Vec<_>>();
             assert_eq!(order(&baseline), [1, 2, 3, 4, 5, 6, 7, 8]);
             assert_eq!(
                 order(&scheduled),
                 [3, 1, 2, 4, 5, 7, 6, 8],
                 "advance one disjoint read, then serve the older write"
             );
-            assert_eq!(scheduled.finished[0].wait_ticks, 0);
-            assert_eq!(baseline.finished[2].wait_ticks, 10);
+            assert_eq!(scheduled[0].wait_ticks, 0);
+            assert_eq!(baseline[2].wait_ticks, 10);
             assert_eq!(
-                scheduled.finished.last().unwrap().completed_at,
-                baseline.finished.last().unwrap().completed_at
+                scheduled.last().unwrap().completed_at,
+                baseline.last().unwrap().completed_at
             );
-            verify(baseline).unwrap();
-            verify(scheduled).unwrap();
+            verify(fifo, baseline).unwrap();
+            verify(read_first, scheduled).unwrap();
         }
+    }
+    #[test]
+    fn failure_stops_the_scheduler_before_it_can_reuse_pending_work() {
+        let depth = NonZeroUsize::new(2).unwrap();
+        let mut scheduler = HostScheduler::new(Ftl::new(), depth, Policy::PassThrough);
+        let invalid = Operation::Read {
+            lba: scheduler.logical_blocks(),
+            blocks: 1,
+        };
+        let batch = [Operation::Flush, invalid];
+        let failure = scheduler.execute(batch).err().unwrap();
+        assert_eq!(failure.kind(), io::ErrorKind::InvalidInput);
+        let retry = scheduler.execute([Operation::Flush]).err().unwrap();
+        assert_eq!(retry.kind(), io::ErrorKind::BrokenPipe);
     }
 }

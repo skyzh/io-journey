@@ -13,6 +13,7 @@
 # Linux labs
 
 - [Linux labs](linux-labs.md)
+    - [Use your queue from Linux](linux-ublk.md)
     - [Mount your filesystem](linux-filesystem.md)
     - [Append on a real kernel](linux-append.md)
 - [Planned labs](planned-labs.md)

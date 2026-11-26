@@ -9,8 +9,8 @@ completions can arrive out of order. With Linux `none`, the block layer
 still queues and dispatches requests without an I/O scheduler reordering
 them. [Linux multiqueue block layer](https://docs.kernel.org/block/blk-mq.html)
 
-The ublk exercise selected among tags already delivered to the
-userspace device. Here your policy runs before requests enter the
+The preceding [device dispatch exercise](02-queue.md#choose-a-device-request-to-serve)
+selected among requests that had reached the device. Here your policy runs before requests enter the
 device queue. Once a request enters that queue, the device completes
 the work in FIFO order.
 
@@ -80,14 +80,8 @@ finish at tick 30 because they run the same work through one busy
 service engine. These are modeled ticks. Use the mounted labs to
 observe timing and queue depth through an actual Linux driver.
 
-## Planned device labs (TBD)
-
-- QEMU emulated NVMe with the Linux NVMe driver.
-- SPDK userspace storage and the path from a request to a block device.
-- Virtio block storage inside a VM.
-
-These labs will extend the scheduler comparison to guest devices with
-mixed random reads and writes at matched queue depths.
+The [planned device labs](planned-labs.md) list the QEMU, SPDK, and
+VM virtio paths for future comparisons.
 
 Next, [Blocks to files](03-filesystem.md) uses block writes and
 flushes to publish changes to a filesystem.
