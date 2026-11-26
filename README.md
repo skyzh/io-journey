@@ -18,9 +18,10 @@ LLMs and has yet to receive Chi's full review.
 ## What you’ll build
 
 The Linux append lab runs both I/O engines on both filesystems through ublk.
+The block queue lab uses mixed random reads and writes.
 The diagram also shows where physical storage and the planned NVMe lab fit.
 
-![Storage stack paths from append engines through ext4 or FUSE to ublk, physical storage, or the planned NVMe controller. The course device uses a Rust queue, FTL, and simulated NAND.](./course/book/assets/storage-stack.svg)
+![Storage stack paths from a user application through ext4 or FUSE to ublk, physical storage, or the planned NVMe controller. The course device uses a Rust queue, FTL, and simulated NAND.](./course/book/assets/storage-stack.svg)
 
 - [NAND to SSD](course/01-ftl.md) — Implement NAND page operations, then make flash behave like a disk
   and test overwrite, collection, and recovery.
