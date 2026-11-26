@@ -11,13 +11,20 @@ Use a Linux machine, a remote Linux server, or a Linux VM. On macOS,
 use any VM that supports the kernel features needed by the labs you
 want to run. OrbStack is one environment the author tested.
 
-Open a shell on Linux, go to the course checkout, and check that Rust,
-Cargo, and Bash are available.
+Open a Linux shell and check that Rust, Cargo, and Bash are available.
 
 ```sh
 rustc --version
 cargo --version
 bash --version
+```
+
+Clone the course and enter the checkout. If you already cloned it, open
+that checkout instead.
+
+```sh
+git clone https://github.com/skyzh/io-journey.git
+cd io-journey
 ```
 
 Run the demo and learner tests as an ordinary user. Cargo uses its
