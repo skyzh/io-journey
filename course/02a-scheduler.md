@@ -80,5 +80,14 @@ finish at tick 30 because they run the same work through one busy
 service engine. These are modeled ticks. Use the mounted labs to
 observe timing and queue depth through an actual Linux driver.
 
+## Planned device labs (TBD)
+
+- QEMU emulated NVMe with the Linux NVMe driver.
+- SPDK userspace storage and the path from a request to a block device.
+- Virtio block storage inside a VM.
+
+These labs will extend the scheduler comparison to guest devices with
+mixed random reads and writes at matched queue depths.
+
 Next, [Blocks to files](03-filesystem.md) uses block writes and
 flushes to publish changes to a filesystem.
