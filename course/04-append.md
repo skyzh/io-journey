@@ -26,7 +26,7 @@ offsets. The adapter keeps an `Arc` owner for each submitted buffer as
 long as the kernel may still be using it.
 
 Once the receipt check passes, `cargo xtask test` fetches the locked
-Linux `io-uring` dependencies into tmpfs and runs the completion tests. Open
+Linux `io-uring` dependencies into the Cargo cache and runs the completion tests. Open
 [`course/learner/append-completions.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/append-completions.rs).
 In `check_completions`, match each returned ID to its request exactly
 once and check its byte count. Completion order can vary. Reject

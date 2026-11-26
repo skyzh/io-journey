@@ -13,8 +13,8 @@ cargo xtask ext4
 
 The command was tested on Ubuntu 26.04.1 arm64, kernel
 `7.2.12-orbstack-00394-gbecdd6130068`, with Rust 1.93.1. The guest needs
-`/dev/ublk-control`, ext4 tools, and `/dev/shm` and `/run` on tmpfs. Cargo
-fetches the locked Linux adapter dependencies into `/dev/shm`. The script
+`/dev/ublk-control`, ext4 tools, and `/run` on tmpfs for ublk metadata.
+Cargo builds the adapter under `/var/tmp`. The script
 uses the guest's libclang or an explicit `LIBCLANG_PATH`. On the tested guest
 it extracts Ubuntu's matching libclang package into the temporary directory.
 The userspace demo and learner checkpoints still build offline from the
@@ -44,8 +44,8 @@ Look for these events in the output.
 The simulated cut replaces the Rust block device's live state while the
 ublk server stays running. It uses the checkpoint taken after the
 application's sync even when unmount sends more flushes. The guest keeps
-the flash images in process memory and all build files, logs, and adapter
-metadata on tmpfs.
+the flash images in process memory, build files and logs under
+`/var/tmp`, and adapter metadata under `/run`.
 
 Use the [queue benchmark](QUEUE_BENCHMARK.md) to measure request size,
 depth, and a scheduling change on the same RAM-backed device.

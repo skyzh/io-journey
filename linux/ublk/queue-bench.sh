@@ -21,7 +21,7 @@ if (( $# != 0 )); then
 fi
 
 run_dir=$(mktemp -d /dev/shm/io-journey-bench.XXXXXX)
-build_dir=$(mktemp -d /dev/shm/io-journey-bench-build.XXXXXX)
+build_dir=$(mktemp -d /var/tmp/io-journey-bench-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT
 printf 'Guest capture directory %s\n' "$run_dir"
 {

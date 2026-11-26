@@ -70,7 +70,7 @@ cargo xtask fuse image learner
 cargo xtask fuse ublk learner
 ```
 
-The first command uses the learner journal on a tmpfs image. The
+The first command uses the learner journal on a disk-backed image. The
 second uses the same journal with the learner FTL and queue behind
 ublk. Follow the acknowledged append and then the replacement.
 The open descriptor still sees the earlier file through the

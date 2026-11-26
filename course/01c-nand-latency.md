@@ -1,6 +1,6 @@
 # Read latency under NAND contention
 
-From a clean checkout, complete the [tmpfs setup](START.md#set-up-linux)
+From a clean checkout, complete the [Linux setup](START.md#set-up-linux)
 in the Linux guest and run this from the repository root. The lab uses
 the reference FTL and is ready before you start any chapter work.
 

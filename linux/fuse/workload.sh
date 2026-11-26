@@ -7,17 +7,15 @@ fail() {
 }
 
 [[ $(id -u) == 0 && -c /dev/fuse ]] || fail 'Run the lab as guest root.'
-[[ $(findmnt -n -o FSTYPE -T /dev/shm) == tmpfs ]] || fail '/dev/shm must be tmpfs.'
 [[ $# == 1 || $# == 8 ]] || fail 'Use the FUSE smoke entry.'
 
 fuse_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$fuse_dir/mount.sh"
 require_private_mount_namespace
-require_private_mount_parent /dev/shm
+require_private_mount_parent /var/tmp
 binary=$(realpath -- "$1")
-[[ -x "$binary" && $(findmnt -n -o FSTYPE -T "$binary") == tmpfs ]] ||
-    fail 'The FUSE server binary must be in guest tmpfs.'
-run_dir=$(mktemp -d /dev/shm/io-journey-fuse.XXXXXX)
+[[ -x "$binary" ]] || fail 'Expected executable at '"$binary"
+run_dir=$(mktemp -d /var/tmp/io-journey-fuse.XXXXXX)
 mount_dir="$run_dir/mount"
 mount_name="${run_dir##*/}"
 fuse_pid=

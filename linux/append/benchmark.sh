@@ -28,7 +28,7 @@ if (( $# == 1 )); then
     append_features=(--features learner-append)
 fi
 
-build_dir=$(mktemp -d /dev/shm/io-journey-append-build.XXXXXX)
+build_dir=$(mktemp -d /var/tmp/io-journey-append-build.XXXXXX)
 trap 'rm -rf -- "$build_dir"' EXIT
 capture=$(mktemp -d /dev/shm/io-journey-append-results.XXXXXX)
 printf 'Guest capture directory %s\n' "$capture"

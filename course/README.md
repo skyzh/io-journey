@@ -1,7 +1,7 @@
 # I/O Journey chapters
 
-[Start here](START.md) for Linux setup and the demo, then read the
-[overview](00-architecture.md) to follow an append through the stack.
+Read the [overview](00-architecture.md) to follow an append through the
+stack, then [set up your environment](START.md) and run the demo.
 
 1. [NAND to SSD](01-ftl.md)
 2. [Blocks in flight](02-queue.md)

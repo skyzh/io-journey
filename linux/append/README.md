@@ -11,7 +11,7 @@ cargo xtask append
 The script prints its capture directory on guest tmpfs. It first runs on
 ext4, then on the learner filesystem through FUSE. Each case starts with
 a fresh, verified 32 MiB ublk device with a write-back cache and separate
-flushes to the RAM-backed FTL. The build and capture files live in tmpfs.
+flushes to the RAM-backed FTL. The binaries build under `/var/tmp`. Captures live in tmpfs so collecting them avoids disk writes.
 
 ## Trace a durable receipt
 

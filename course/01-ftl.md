@@ -37,7 +37,7 @@ The mapping is `self.map`, a table with one entry per LBA. Each entry is
 
 ## Run the check
 
-Work in the checkout from [Start here](START.md) and run:
+Work in the checkout from [environment setup](START.md) and run:
 
 ```sh
 cargo xtask test
@@ -180,7 +180,7 @@ After the FTL checks pass, run the ext4 lab from this checkout. It uses
 a disposable guest ublk device. Check the [ublk prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/ublk/README.md)
 for the kernel device, ext4 tools, libclang, and temporary Cargo dependencies.
 Use the [root guest shell](START.md#mounted-labs) from the checkout.
-Both `/dev/shm` and `/run` must be on tmpfs.
+The ublk service stores its runtime metadata in `/run`, which must be on tmpfs.
 
 ```sh
 cargo xtask ext4 learner

@@ -43,20 +43,12 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Set up Rust and Cargo scratch
+      - name: Set up Rust
         shell: bash
         run: |
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           rustc --version
           cargo --version
-          read -r filesystem options < <(findmnt -n -o FSTYPE,OPTIONS -T /dev/shm)
-          if [[ $filesystem != tmpfs || ,$options, == *,noexec,* ]]; then
-            echo '/dev/shm must be executable tmpfs for the course commands.' >&2
-            exit 1
-          fi
-          scratch=$(mktemp -d /dev/shm/io-journey-ci.XXXXXX)
-          printf '%s\n' "CARGO_HOME=$scratch/home" "CARGO_TARGET_DIR=$scratch/target" \
-            "TMPDIR=$scratch" >> "$GITHUB_ENV"
       - name: Run the reference tests
         run: cargo xtask test reference
       - name: Verify the first unfinished learner checkpoint
