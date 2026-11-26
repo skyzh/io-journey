@@ -20,26 +20,7 @@ LLMs and has yet to receive Chi's full review.
 The Linux append lab runs both I/O engines on both filesystems through ublk.
 The diagram also shows where physical storage and the planned NVMe lab fit.
 
-```mermaid
-flowchart TD
-    App["Append log"]
-    App --> Sync["Synchronous engine"]
-    App --> Uring["io_uring engine"]
-    Sync --> Ext4["ext4"]
-    Sync --> Fuse["Course filesystem via FUSE"]
-    Uring --> Ext4
-    Uring --> Fuse
-    Ext4 --> Block["Linux block layer"]
-    Fuse --> Block
-    Block --> Ublk["ublk virtual block device · current lab"]
-    Block --> Hardware["Physical block device"]
-    Block -.-> NvmeHost["Linux NVMe driver · TBD"]
-    NvmeHost -. NVMe commands .-> NvmeController["Emulated NVMe controller · TBD"]
-    NvmeController -.-> Queue["Rust block request and completion queue"]
-    Ublk --> Queue
-    Queue --> FTL["Flash translation layer (FTL)"]
-    FTL --> NAND["Simulated NAND"]
-```
+![Storage stack paths from append engines through ext4 or FUSE to ublk, physical storage, or the planned NVMe controller. The course device uses a Rust queue, FTL, and simulated NAND.](./course/book/assets/storage-stack.svg)
 
 - [NAND to SSD](course/01-ftl.md) — Implement NAND page operations, then make flash behave like a disk
   and test overwrite, collection, and recovery.
