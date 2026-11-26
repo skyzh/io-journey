@@ -97,11 +97,15 @@ and checks that the same two records survive that too.
 | Chapter | Layer | You add |
 | --- | --- | --- |
 | [1. NAND to SSD](01-ftl.md) | NAND and FTL | Read, program, and erase NAND, then publish and relocate logical blocks |
-| [2. Blocks in flight](02-queue.md) | Block queue | Bounded requests, flush ordering, and Linux tag dispatch |
-| [3. Blocks to files](03-filesystem.md) | Filesystem | A journal that makes file and directory changes recoverable |
-| [4. Efficient application I/O](04-append.md) | Application | Record recovery and an append engine that acknowledges after sync |
+| [2. Blocks in flight](02-queue.md) | Block queue | Bounded requests, flush ordering, and a [host scheduler](02a-scheduler.md) that chooses which request to send next |
+| [3. Blocks to files](03-filesystem.md) | Filesystem | A userspace write cache and a journal that makes file and directory changes recoverable |
+| [4. Efficient application I/O](04-append.md) | Application | Record recovery, completion checks on a simulated I/O ring, and acknowledgement after sync |
 
 Chapter 1 starts with the NAND operations and builds the FTL on top.
-Each later chapter runs on the code you wrote in the earlier ones.
+Each later chapter runs on the code you wrote in the earlier ones. After
+Chapter 4, one command runs your whole stack, simulates a power cut and
+checks what survived. Everything in the main chapters runs on macOS or
+Linux. The optional [Linux labs](linux-labs.md) run your learner modules
+with real kernel interfaces.
 
 Next, [set up your environment and run the demo](START.md).

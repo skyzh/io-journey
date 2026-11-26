@@ -251,7 +251,7 @@ Reopen from the checkpoint after the cut. The simulator restores its NAND
 image, including the partial page, and loads the saved map directly.
 A read of LBA 1 still returns the full `0x12` block from page 0.
 
-Run the existing check against the supplied implementation from your Linux
+Run the existing check against the supplied implementation from your
 checkout:
 
 ```sh

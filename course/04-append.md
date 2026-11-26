@@ -89,7 +89,35 @@ latency runs from the start of the group to that point.
 
 Rerun the group check. A failed or short write cannot reach sync or
 grow the receipts. Failure to sync leaves the entire group without
-new receipts. Then run `cargo xtask test` to check the whole stack together.
+new receipts.
+
+## Run the whole stack
+
+You have now written every layer. Run them together:
+
+```sh
+cargo xtask demo learner
+```
+
+This runs a small application on your journaled filesystem, cache,
+scheduler, queue and FTL, all on the simulated NAND, on macOS or Linux.
+It first checks aligned random reads and writes and mixed I/O. Then it
+appends log records, syncs, appends one more without syncing, and
+simulates a power cut by reopening the last durable image. The end of the output shows what survived:
+
+```text
+Acknowledged 2 records after sync.
+Read all 3 records before the cut.
+Simulated power cut. Reopening the last durable image.
+Recovered all 2 acknowledged records (8192 bytes). The unflushed tail is absent.
+The synced random file also recovered byte for byte.
+```
+
+The two acknowledged records come back, and the record that was never
+synced doesn't. That is the promise from the start of this chapter, kept
+by every layer you built. `cargo xtask test` reruns all the focused checks
+from every chapter and ends with the same run.
+
 
 ## Try it on Linux
 
