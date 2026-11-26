@@ -271,8 +271,9 @@ cargo xtask learner check
 
 ## Why requests wait
 
-A NAND die does one operation at a time, and a program or erase takes far
-longer than a read. Run the timing model to see what that does to reads:
+The timing model gives each NAND die one operation at a time, and makes a
+program or erase take far longer than a read. Run it to see what that does
+to reads:
 
 ```sh
 cargo xtask nand-latency
@@ -287,9 +288,9 @@ behind programs. Let garbage collection run as well and it reaches
 "First collection" lines, the read on die 1 runs as soon as it arrives,
 while the read on die 0 waits for the whole collection.
 
-The numbers come from a fixed simulated trace, not from a real SSD. The
-mechanism is what carries over: work queues up per die, and the order in
-which requests are issued decides who waits. That is the next layer.
+The numbers come from a fixed simulated trace, not from a real SSD. In
+this model, work queues up per die, and the order in which requests are
+issued decides who waits. Ordering requests is the next layer.
 
 When the eight FTL tests pass, continue to [Blocks in flight](02-queue.md).
 You’ll use this FTL as the device behind your request queue. In the
