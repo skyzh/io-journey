@@ -12,12 +12,12 @@ an SSD works this way.
 The device has 8 logical blocks (LBAs 0–7) of 4 KiB each, stored on 16
 physical NAND pages. The pages form 4 erase blocks of 4 pages:
 
-```text
-erase block 0   pages  0  1  2  3
-erase block 1   pages  4  5  6  7
-erase block 2   pages  8  9 10 11
-erase block 3   pages 12 13 14 15
-```
+| Erase block | NAND pages |
+| --- | --- |
+| 0 | 0–3 |
+| 1 | 4–7 |
+| 2 | 8–11 |
+| 3 | 12–15 |
 
 There are twice as many pages as LBAs, so an overwrite always has
 somewhere new to go, and collection always has room to work.
@@ -40,10 +40,11 @@ The mapping is `self.map`, a table with one entry per LBA. Each entry is
 Work in the checkout from [environment setup](START.md) and run:
 
 ```sh
-cargo xtask test
+cargo xtask learner previous
+cargo xtask learner map
 ```
 
-The supplied NAND check passes. The first FTL check,
+The supplied NAND check passes. The mapping check,
 `successful_programs_publish_the_new_mapping`, stops with
 `map the first programmed page`. The write programmed a page, but the
 mapping still says the LBA has no data. The test is in `src/ftl.rs`.
@@ -76,9 +77,9 @@ Rename the `_page` parameter to `page` and use
 `self.map.replace(lba, page)`. It updates the entry and returns the old
 one.
 
-Run `cargo xtask test` again. The mapping check passes and the live-page
-check reaches `implement live-page relocation`. Its fixture wrote enough
-to need collection.
+Rerun `cargo xtask learner map`. When it passes, run
+`cargo xtask learner collect`. The collection fixture writes enough
+to run out of spare pages and reaches `implement live-page relocation`.
 
 ## Step 2: move live pages before an erase
 
@@ -86,12 +87,12 @@ Keep overwriting LBA 0 and erased pages run out. Continue the trace above
 until LBA 0 has been written to pages 8, 9, 10 and 11. The chip now looks
 like this:
 
-```text
-erase block 0   page 0 stale    pages 1–3 hold LBAs 1–3
-erase block 1   pages 4–7 hold LBAs 4–7
-erase block 2   pages 8–10 stale    page 11 holds LBA 0
-erase block 3   pages 12–15 erased
-```
+| Erase block | Stale pages | Live pages | Erased pages |
+| --- | --- | --- | --- |
+| 0 | 0 | 1–3 hold LBAs 1–3 | |
+| 1 | | 4–7 hold LBAs 4–7 | |
+| 2 | 8–10 | 11 holds LBA 0 | |
+| 3 | | | 12–15 |
 
 Only 4 erased pages are left, so the next write, LBA 1, first starts
 collection. Erase block 2 has the most stale pages, 3, so the supplied
@@ -131,9 +132,8 @@ and the erase reclaims them with the rest of the block. Victim selection
 has already checked that enough erased pages exist outside the victim.
 The caller erases the block only if your method returns `Ok`.
 
-Run `cargo xtask test`. The FTL suite should report 8 passing tests.
-The next failing check is now in the queue chapter. Besides the two
-traces above, the FTL suite checks that:
+Rerun `cargo xtask learner collect`. The full FTL suite at the end of
+this chapter also checks that:
 
 - every LBA reads back its expected bytes after the image is reopened;
 - a torn program, power lost partway through writing a page, leaves those
@@ -171,32 +171,17 @@ cargo xtask test reference a_torn_program_persists_the_exact_prefix_without_publ
 ```
 
 The check inspects the exact bytes in the partial page and reads LBA 1
-after reopening. After you finish both exercises, `cargo xtask test`
-runs the same check with your FTL.
+after reopening. The focused suite below runs the same check with your FTL.
 
-## Use your FTL from ext4
+## Check your FTL
 
-After the FTL checks pass, run the ext4 lab from this checkout. It uses
-a disposable guest ublk device. Check the [ublk prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/ublk/README.md)
-for the kernel device, ext4 tools, libclang, and temporary Cargo dependencies.
-Use the [root guest shell](START.md#mounted-labs) from the checkout.
-The ublk service stores its runtime metadata in `/run`, which must be on tmpfs.
+Run the focused FTL suite from the checkout after both exercises.
 
 ```sh
-cargo xtask ext4 learner
+cargo xtask learner check
 ```
 
-The `learner` argument builds the adapter with `course/learner/ftl.rs`.
-A missing or unbuildable implementation stops the build before a device is
-allocated.
-
-Look for the learner mapping trace, then the saved checkpoint from the app's
-sync. The script reads the unsynced third record, unmounts, and reopens the
-saved image. The read-only remount must recover `first` and `second` with
-their checksums. The small ext4 workload checks placement and recovery.
-The offline collection fixture forces live-page relocation separately.
-
-## Next
-
-[Blocks in flight](02-queue.md) puts a bounded request queue on top of
-your FTL.
+When the eight FTL tests pass, continue to [Blocks in flight](02-queue.md).
+You’ll use this FTL as the device behind your request queue. In the
+[final chapter](04-append.md), you’ll run the completed stack end to end
+and check that it recovers the records the application acknowledged.

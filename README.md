@@ -42,7 +42,7 @@ flowchart TD
 ```
 
 - [NAND to SSD](course/01-ftl.md) — Build the layer that makes flash behave
-  like a disk, then use it under Linux with ext4.
+  like a disk, and test overwrite, collection, and recovery.
 - [Blocks in flight](course/02-queue.md) — Build a block queue and see how it
   handles competing requests.
 - [Blocks to files](course/03-filesystem.md) — Build a small filesystem and

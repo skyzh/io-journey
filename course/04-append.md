@@ -1,7 +1,6 @@
 # 4. Efficient application I/O
 
-Keep your working FTL, queue, and journal. Run `cargo xtask test`
-until it reaches the first append check. This chapter builds an append engine
+Keep your working FTL, queue, and journal. This chapter builds an append engine
 that issues bounded positional writes and acknowledges a group only
 after successful file sync.
 
@@ -11,7 +10,7 @@ Each record has a length, a checksum, and its payload. A receipt gives
 the byte count the app already acknowledged. During the lab, the
 runner holds that receipt outside the file it cuts.
 
-Open [`course/learner/record.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/record.rs). Limit the supplied
+Run `cargo xtask learner receipt` and open [`course/learner/record.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/record.rs). Limit the supplied
 `decode` function to the exact length in the receipt. Return an
 `InvalidData` error if the receipt extends beyond the bytes available.
 A partial record after the receipt does not change the durable prefix.
@@ -25,7 +24,7 @@ submission plumbing. Each wave has up to four writes at explicit file
 offsets. The adapter keeps an `Arc` owner for each submitted buffer as
 long as the kernel may still be using it.
 
-Once the receipt check passes, `cargo xtask test` fetches the locked
+Once the receipt check passes, `cargo xtask learner completions` fetches the locked
 Linux `io-uring` dependencies into the Cargo cache and runs the completion tests. Open
 [`course/learner/append-completions.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/append-completions.rs).
 In `check_completions`, match each returned ID to its request exactly
@@ -46,7 +45,7 @@ Run the check again to exercise both kinds of failure.
 
 ## Acknowledge after sync
 
-When the completion checks pass, the group check reaches
+When the completion checks pass, run `cargo xtask learner ack`. The group check reaches
 `implement group acknowledgement`. Open
 [`course/learner/append-commit.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/append-commit.rs) and write
 the group in chunks of `DEPTH`. Once all waves in the group succeed,
@@ -54,9 +53,9 @@ sync the file once. Add one receipt per record only after that sync
 succeeds. Each
 latency runs from the start of the group to that point.
 
-Run `cargo xtask test` again. A failed or short write cannot reach sync or
+Rerun the group check. A failed or short write cannot reach sync or
 grow the receipts. Failure to sync leaves the entire group without
-new receipts. The command now passes through all four chapters.
+new receipts. Then run `cargo xtask test` to check all four layers together.
 
 ## Compare and recover
 

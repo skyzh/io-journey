@@ -1,8 +1,7 @@
 # 3. Blocks to files
 
 Keep your FTL and queue from [Blocks in flight](02-queue.md).
-`cargo xtask test` should pass the queue and dispatch checks before
-it reaches the journal. In the [reference demo](START.md#run-the-reference-demo),
+In the [reference demo](START.md#run-the-reference-demo),
 follow the append's data writes and directory update. The
 [fixed-extent filesystem](https://github.com/skyzh/io-journey/blob/main/src/filesystem.rs)
 records a length after queuing its data. Reopening uses that length
@@ -16,7 +15,7 @@ publishes changes to names, such as a rename over another file.
 ## Make the redo commit recoverable
 
 Open [`course/learner/journal.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/journal.rs) and run
-`cargo xtask test`. At the first transaction the commit check reports
+`cargo xtask learner commit`. At the first transaction the commit check reports
 `implement journal barriers`.
 Implement `persist_redo` using the supplied `Disk` interface.
 
@@ -32,8 +31,9 @@ file sync and directory sync.
 
 ## Choose what to reopen
 
-Once the commit check passes, the journal suite cuts power after the
-marker is durable and reaches the missing committed-redo branch of
+Once the commit check passes, run `cargo xtask learner replay`.
+The journal suite cuts power after the marker is durable and reaches
+the missing committed-redo branch of
 `read_committed`.
 The starter handles an empty marker by reading the home block.
 For a valid marker, read `REDO`, compare its `frame_checksum` with
@@ -43,7 +43,7 @@ supplied `corrupt` helper. Return the validated metadata and
 `Some(redo)` so the supplied replay step can reinstall home and
 clear the marker.
 
-Run `cargo xtask test` again. A cut before the marker recovers the
+Rerun the replay check. A cut before the marker recovers the
 old name and bytes. A cut at or after the marker recovers the new
 name and bytes, with exactly the corresponding allocated blocks.
 A cut during replay can leave the marker present. Replaying it
@@ -56,8 +56,7 @@ inside an allocated block, the shrink needs a new block to zero the
 suffix while preserving the earlier committed bytes. On a full device it fails before
 changing the file. An aligned shrink only drops a whole block
 reference. After sync it reclaims that block and recovers the
-shorter file. When the journal suite passes, the command reaches the
-receipt check in [Efficient application I/O](04-append.md).
+shorter file.
 
 ## Mount this filesystem
 
@@ -72,7 +71,11 @@ cargo xtask fuse ublk learner
 
 The first command uses the learner journal on a disk-backed image. The
 second uses the same journal with the learner FTL and queue behind
-ublk. Follow the acknowledged append and then the replacement.
+ublk. The lab supplies the application workload. Follow its acknowledged
+append and then the replacement.
 The open descriptor still sees the earlier file through the
 rename. The recovered name points to the complete replacement
 and the final inspection finds two allocated data blocks.
+
+Next, [Efficient application I/O](04-append.md) adds the append engine
+and compares it on the complete stack.

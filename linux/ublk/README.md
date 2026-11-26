@@ -47,5 +47,16 @@ application's sync even when unmount sends more flushes. The guest keeps
 the flash images in process memory, build files and logs under
 `/var/tmp`, and adapter metadata under `/run`.
 
+To run this optional smoke check with the FTL you wrote in the course,
+pass `learner` after completing the FTL tests.
+
+```sh
+cargo xtask ext4 learner
+```
+
+The adapter builds with `course/learner/ftl.rs` before allocating a
+device. Look for the learner mapping trace before the checkpoint and
+recovery output.
+
 Use the [queue benchmark](QUEUE_BENCHMARK.md) to measure request size,
 depth, and a scheduling change on the same RAM-backed device.

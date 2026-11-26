@@ -1,8 +1,7 @@
 # 2. Blocks in flight
 
-Continue in the checkout from [NAND to SSD](01-ftl.md). When you run
-`cargo xtask test`, the FTL checks should pass and the first queue
-check should fail.
+Continue in the checkout with your working FTL from
+[NAND to SSD](01-ftl.md). The queue sends its requests to that FTL.
 
 Your inner Rust queue accepts whole requests. A range uses one slot even
 when it spans several blocks. Acceptance records an ID. Completion
@@ -10,7 +9,7 @@ returns that ID with the result after the device operation runs.
 
 ## Admit requests without executing them
 
-The admission check shows that the starter accepts one request too
+Run `cargo xtask learner admit`. The starter accepts one request too
 many. In [`course/learner/queue.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/queue.rs), implement
 `has_room` using the pending length and the configured depth. Admission
 already validates the whole range. A full queue returns the caller's
@@ -21,7 +20,8 @@ The supplied fields are `pending` of type `VecDeque<Request>` and
 
 ## Preserve order and IDs
 
-Once admission passes, the next check exercises request order and IDs.
+Once admission passes, run `cargo xtask learner order` to check request
+order and IDs.
 Give each accepted request a distinct ID in `allocate_id`.
 Return a rejected submission error if incrementing
 `next_id` would overflow. In `take_next_request`, take the oldest
@@ -32,7 +32,7 @@ third completion must find the queue empty. `RequestId` is `u64`, and
 
 ## Flush at the request boundary
 
-The flush check writes a range, submits
+Run `cargo xtask learner flush`. The check writes a range, submits
 a flush, then submits another write as space opens. In `flush_image`,
 publish the FTL image when the queue executes that flush. At this point
 the earlier range has finished. The supplied `Ftl::flush` takes
@@ -47,17 +47,20 @@ Rust queue. It sees a ready batch from Linux. Keep the inner queue FIFO
 and implement the read-first choice in
 [`course/learner/dispatch.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/dispatch.rs).
 
-Once the queue checks pass, the next check exercises policy selection.
+Once the queue checks pass, run `cargo xtask learner dispatch` to check
+policy selection.
 FIFO always chooses index zero.
 For read-first, find the first read before a barrier that has no
 overlapping earlier write. `request` supplies the kind and sector span
 for each batch entry. `disjoint` checks both span ends and treats overflow
-conservatively. Return zero if no read qualifies. Run `cargo xtask test` again.
-It checks disjoint and overlapping reads, a flush boundary, and overflow.
-When these pass, the next failing check is the journal commit in
-[Blocks to files](03-filesystem.md).
+conservatively. Return zero if no read qualifies. Rerun the dispatch
+check for disjoint and overlapping reads, a flush boundary, and overflow.
 
 ## Compare on the guest
+
+For an optional first look at the kernel using your virtual disk, see the
+[ext4 smoke check](https://github.com/skyzh/io-journey/blob/main/linux/ublk/README.md).
+It uses Linux’s supplied filesystem.
 
 Use the [fio and tracing prerequisites](https://github.com/skyzh/io-journey/blob/main/linux/ublk/QUEUE_BENCHMARK.md).
 Run from the checkout in the [root guest shell](START.md#mounted-labs).
@@ -101,3 +104,6 @@ depths reported by fio.
 In the author's sweep, the depth-one run achieved depth one throughout,
 and the 16 KiB run achieved depth eight. The benchmark's report retains
 both rows with their request sizes, byte counts, and timings.
+
+Next, [Blocks to files](03-filesystem.md) uses your queue for the
+filesystem’s block writes and flushes.
