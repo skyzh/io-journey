@@ -269,6 +269,28 @@ Run the focused FTL suite from the checkout after both exercises.
 cargo xtask learner check
 ```
 
+## Why requests wait
+
+A NAND die does one operation at a time, and a program or erase takes far
+longer than a read. Run the timing model to see what that does to reads:
+
+```sh
+cargo xtask nand-latency
+```
+
+It replays the same 48 reads three times on a two-die model with
+illustrative service times: read 80 µs, program 400 µs, erase 1,600 µs.
+Look at the `read p99 us` column. With reads alone it is 80 µs. Add
+overwrites and it rises to 6,895 µs, because reads on the busy die wait
+behind programs. Let garbage collection run as well and it reaches
+24,175 µs, because reads also wait behind copies and erases. In the
+"First collection" lines, the read on die 1 runs as soon as it arrives,
+while the read on die 0 waits for the whole collection.
+
+The numbers come from a fixed simulated trace, not from a real SSD. The
+mechanism is what carries over: work queues up per die, and the order in
+which requests are issued decides who waits. That is the next layer.
+
 When the eight FTL tests pass, continue to [Blocks in flight](02-queue.md).
 You’ll use this FTL as the device behind your request queue. In the
 [final chapter](04-append.md), you’ll run the completed stack end to end

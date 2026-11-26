@@ -9,4 +9,11 @@
 - [Blocks to files](03-filesystem.md)
 - [Efficient application I/O](04-append.md)
 
+# Linux labs
+
+- [Linux labs](linux-labs.md)
+    - [Mount your filesystem](linux-filesystem.md)
+    - [Append on a real kernel](linux-append.md)
+- [Planned labs](planned-labs.md)
+
 [Sponsored by Raft.build](sponsor.md)
