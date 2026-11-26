@@ -6,7 +6,8 @@ publish = false
 default-run = "io-journey"
 
 [features]
-learner = []
+learner-nand = []
+learner = ["learner-nand"]
 learner-queue = ["learner"]
 learner-journal = ["learner-queue"]
 learner-append = ["learner-journal"]

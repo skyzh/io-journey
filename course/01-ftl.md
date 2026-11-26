@@ -22,12 +22,48 @@ physical NAND pages. The pages form 4 erase blocks of 4 pages:
 There are twice as many pages as LBAs, so an overwrite always has
 somewhere new to go, and collection always has room to work.
 
+## Implement the NAND operations
+
+Start in [your course checkout](START.md). The supplied code allocates
+the page slots and computes which pages belong to each erase block.
+In [`course/learner/nand.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/nand.rs),
+you implement the operations on those slots.
+
+```sh
+cargo xtask learner nand
+```
+
+The starter fails with `implement NAND page programming`. Work through
+the operations and rerun the same check after each edit.
+
+1. **Program a page.** Use the physical page number to look up a mutable
+   slot. Return an `InvalidInput` error if the page is outside the
+   device. Return an error if the slot is already occupied and leave
+   its bytes intact. For an erased slot, store
+   `Some(super::storage::keep(data))`.
+2. **Read a page.** Return `None` for an erased slot or a page outside
+   the device. For a programmed slot, use `super::storage::borrow`
+   to return its block without copying it.
+3. **Erase a block.** The caller passes a mutable slice for that whole
+   block. Set each slot to `None`. The caller selects the slice, so your
+   method touches only the pages in that block.
+
+The model uses `None` to represent an erased page. A physical erased page
+reads as all `0xFF` bytes. The tests check that reprogramming an occupied
+page fails, that erasing one block preserves the adjacent block, and that
+you can program a page again after erase.
+
+When both NAND tests pass, you have the device operations the FTL needs.
+The FTL keeps track of which physical page holds each logical block.
+
+## Connect the FTL to NAND
+
 Most of the FTL is supplied. You write two methods in
 [`course/learner/ftl.rs`](https://github.com/skyzh/io-journey/blob/main/course/learner/ftl.rs):
 
 | Supplied | Yours |
 | --- | --- |
-| The NAND model in [`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs): `read`, `program`, `erase`, and `erased_pages` | |
+| The NAND geometry, page storage, and erased-page iterator in [`src/nand.rs`](https://github.com/skyzh/io-journey/blob/main/src/nand.rs) | The read, program, and erase operations you just implemented |
 | `Ftl::write` in [`src/ftl.rs`](https://github.com/skyzh/io-journey/blob/main/src/ftl.rs): check the LBA, pick the first erased page, and program it | `publish_mapping`: point the LBA at that page and return the page it used before |
 | Start collection when 4 or fewer erased pages remain, choose the erase block with the most stale pages, and erase it afterwards | `relocate_live_pages`: copy each live page out of that block and update its mapping |
 | Reads, flush, simulated power cuts, the torn-program fault, and reopen | |
@@ -37,14 +73,13 @@ The mapping is `self.map`, a table with one entry per LBA. Each entry is
 
 ## Run the check
 
-Work in the checkout from [environment setup](START.md) and run:
+With both NAND tests passing in this checkout, run:
 
 ```sh
-cargo xtask learner previous
 cargo xtask learner map
 ```
 
-The supplied NAND check passes. The mapping check,
+The mapping check,
 `successful_programs_publish_the_new_mapping`, stops with
 `map the first programmed page`. The write programmed a page, but the
 mapping still says the LBA has no data. The test is in `src/ftl.rs`.

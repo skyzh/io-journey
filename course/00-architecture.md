@@ -2,7 +2,7 @@
 
 When an application appends to a file and calls sync, its bytes pass
 through several layers before they rest on flash. In this course you build
-four of those layers in Rust and run them against a simulated NAND chip:
+the stack in Rust, starting with a simulated NAND chip:
 
 <ol class="write-path" aria-label="One append through the storage stack">
   <li><strong>Application</strong><span>Write the record bytes at the end of the log, then sync the file</span></li>
@@ -138,12 +138,12 @@ a separate exercise.
 
 | Chapter | Layer | You add |
 | --- | --- | --- |
-| [1. NAND to SSD](01-ftl.md) | FTL | Publish each write's new page, and move live pages before an erase |
+| [1. NAND to SSD](01-ftl.md) | NAND and FTL | Read, program, and erase NAND, then publish and relocate logical blocks |
 | [2. Blocks in flight](02-queue.md) | Block queue | Bounded requests, flush ordering, and Linux tag dispatch |
 | [3. Blocks to files](03-filesystem.md) | Filesystem | A journal that makes file and directory changes recoverable |
 | [4. Efficient application I/O](04-append.md) | Application | Record recovery and an append engine that acknowledges after sync |
 
-Chapter 1 starts on a complete NAND model. Each later chapter runs on
-the code you wrote in the earlier ones.
+Chapter 1 starts with the NAND operations and builds the FTL on top.
+Each later chapter runs on the code you wrote in the earlier ones.
 
 Next, [set up your environment and run the demo](START.md).

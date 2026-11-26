@@ -51,15 +51,14 @@ the two records that survive the cuts.
 
 ## Test your own implementation
 
-Start with [Chapter 1’s focused checks](01-ftl.md#run-the-check).
-The supplied NAND check passes. The first mapping check shows the
-behavior you will implement. Each chapter gives you a command to
-rerun after each edit.
+Start with [Chapter 1’s NAND check](01-ftl.md#implement-the-nand-operations).
+The check shows the first missing operation in the starter.
+Each chapter gives you a command to rerun after each edit.
 
 Keep editing in this one checkout. The checks select learner code
 under `course/learner/`, and later chapters build on the modules
 you completed earlier. In the final chapter, run `cargo xtask test`
-to check all four layers together. The demo and
+to check the whole stack together. The demo and
 `cargo xtask test reference` use the supplied implementation.
 
 Next, start [NAND to SSD](01-ftl.md).

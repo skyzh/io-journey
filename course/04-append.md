@@ -55,7 +55,7 @@ latency runs from the start of the group to that point.
 
 Rerun the group check. A failed or short write cannot reach sync or
 grow the receipts. Failure to sync leaves the entire group without
-new receipts. Then run `cargo xtask test` to check all four layers together.
+new receipts. Then run `cargo xtask test` to check the whole stack together.
 
 ## Compare and recover
 
