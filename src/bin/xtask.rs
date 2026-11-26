@@ -3,10 +3,10 @@ use std::io;
 use std::process::{Command, ExitCode, ExitStatus};
 
 const NAND_HELP: &str = "cargo xtask nand-latency [--read-us N] [--program-us N] [--erase-us N]";
-const HELP: &str = "Run from the checkout. See course/START.md for the Linux setup.
+const HELP: &str = "Run from the checkout. See course/START.md for macOS and Linux setup.
 
   cargo xtask demo
-  cargo xtask test
+  cargo xtask test                        (full sequence, including Linux io_uring)
   cargo xtask test reference [filter]
 
 Mounted labs (Linux root):
@@ -95,8 +95,8 @@ fn fuse_options(options: &[OsString]) -> bool {
 }
 
 fn run_helper(path: &str, args: &[OsString], private_mounts: bool) -> io::Result<ExitCode> {
-    require_linux()?;
     let mut command = if private_mounts {
+        require_linux()?;
         let mut unshare = Command::new("unshare");
         unshare.args(["--mount", "--propagation", "private", "bash"]);
         unshare
@@ -111,7 +111,7 @@ fn require_linux() -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other(
-            "run this command from the checkout in the Linux guest",
+            "mounted labs need a root Linux shell. Run this command from the course checkout on Linux",
         ))
     }
 }

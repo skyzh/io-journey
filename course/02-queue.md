@@ -58,6 +58,9 @@ check for disjoint and overlapping reads, a flush boundary, and overflow.
 
 ## Compare on the guest
 
+The mounted labs in this chapter build a Linux adapter with a fresh Cargo
+cache. Give the build access to the Cargo registry or a configured mirror.
+
 For an optional first look at the kernel using your virtual disk, see the
 [ext4 smoke check](https://github.com/skyzh/io-journey/blob/main/linux/ublk/README.md).
 It uses Linux’s supplied filesystem.
