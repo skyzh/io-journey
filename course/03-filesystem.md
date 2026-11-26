@@ -38,8 +38,10 @@ so the flushes are the only thing that orders these steps.
   <li><strong>4. Install and clear</strong><span>Copy <code>REDO</code> into <code>HOME</code>, flush, zero <code>COMMIT</code>, flush</span></li>
 </ol>
 
-You write steps 1–3. The supplied code does step 4. When the filesystem
-reopens, it reads `COMMIT` first and chooses a version:
+You write steps 1–3. The supplied code does step 4. The tests cut power at
+the simulator's flush boundaries, where it keeps a durable snapshot of
+everything flushed so far. When the filesystem reopens from such a
+snapshot, it reads `COMMIT` first and chooses a version:
 
 | Power cut | `COMMIT` on reopen | Recovered version |
 | --- | --- | --- |

@@ -20,6 +20,12 @@ record, so throughput should rise. Each record may also wait longer for
 its group's sync, so acknowledgement latency can rise too. The lab at the
 end measures whether it does.
 
+File sync only covers the file's data and length. The file's name is a
+directory entry, which, as in [Blocks to files](03-filesystem.md), only
+becomes durable when the directory is synced. So the runner syncs the
+parent directory once, right after it creates the log file and before any
+appends.
+
 The engine records what it acknowledged as a receipt: the number of bytes
 at the front of the file that are durable. After a power cut, those bytes
 must come back exactly. Anything after them may or may not survive.
@@ -124,9 +130,12 @@ application's receipt to the flash:
 
 1. `Application acknowledged 320 records through file sync.` This is the
    receipt: 64 warmup and 256 measured records.
-2. `ublk tag … request … flush … published FTL checkpoint`. This is the
-   device flush that made them durable. It names the Linux kernel tag, the
-   request ID in your Rust queue, and the FTL checkpoint number.
+2. `ublk tag … request … flush … published FTL checkpoint`. After the
+   application reported its receipt, and before it wrote the
+   unacknowledged tail, the runner saved the latest durable FTL image.
+   This line is the flush that published that image. It names the Linux
+   kernel tag, the request ID in your Rust queue, and the FTL checkpoint
+   number.
 3. `Reopened FTL flush … and verified all 320 acknowledged records.` After
    the cut, the FTL reopened that same checkpoint and the file still held
    every acknowledged record.
@@ -138,7 +147,8 @@ offset *n* × 512. The last acknowledged record, ID 319, starts at offset
 You can't follow one record to one kernel tag or one NAND page. The
 filesystem decides where its blocks go, writes back in the background, and
 the kernel can split or merge requests. The link you can check end to end
-is the flush boundary. That flush finished before the application's sync
-returned, and only then did the engine acknowledge the records. Recovery
-from its checkpoint returned every acknowledged byte. To see
+is the sequence. The engine acknowledged each record only after the file
+sync covering it returned. The runner then saved the latest durable
+checkpoint, and recovery from that checkpoint returned every acknowledged
+byte. To see
 individual NAND programs and mapping updates, use the demo trace instead.
