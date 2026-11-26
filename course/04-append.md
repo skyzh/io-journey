@@ -113,9 +113,9 @@ report:
   and 32. Check whether throughput rises at 32 and whether p50 latency
   rises with it. Latency doesn't always move the same way in every run.
 - **Engine.** Within one filesystem and group size, compare `sync` with
-  `uring` (io_uring). The lab runs each engine twice per case. The
-  difference is small and can change sign between the two runs, so compare
-  both before drawing a conclusion.
+  `uring` (io_uring). The lab runs each engine twice per case. The size
+  and direction of the difference can vary between runs, so compare both
+  repeats before drawing a conclusion.
 
 ## Follow the acknowledgement across layers
 
