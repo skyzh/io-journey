@@ -38,9 +38,11 @@ for the mounted labs. Open the course checkout in your Linux shell.
 Run the mounted commands from the checkout in a root Linux shell.
 The runners use private mount namespaces and fresh, disk-backed
 Cargo caches. Give the build access to the Cargo registry or a
-configured mirror, starting with the mounted lab in Chapter 2. The
-lab instructions list the required kernel devices and tools. The queue
-and append benchmarks keep their captures in `/dev/shm`.
+configured mirror, starting with the mounted lab in Chapter 2. If you
+use a mirror, add its source settings to the checkout's
+`.cargo/config.toml` so the mounted runners can read them.
+The lab instructions list the required kernel devices and tools.
+The queue and append benchmarks keep their captures in `/dev/shm`.
 
 ## Run the reference demo
 
